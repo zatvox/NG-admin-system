@@ -1,0 +1,7 @@
+# Archivos de sistema / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Si en algún momento se agrega un flujo con Node (no aplica hoy, es HTML/JS plano)
+node_modules/

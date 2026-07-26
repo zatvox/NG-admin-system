@@ -7,7 +7,11 @@ Pasos exactos para pasar de "modo demo" a sistema conectado con datos reales.
 1. Entra a [supabase.com](https://supabase.com) y crea un proyecto nuevo (plan Free alcanza para esta organización).
 2. Anota la **Project URL** y la **anon public key** (Project Settings → API).
 3. En **Authentication → Providers**, deja habilitado Email/Password (es el único método que usa este sistema por ahora).
-4. En **Authentication → URL Configuration**, agrega la URL donde publiques el sitio (ver paso 4) como Site URL y como Redirect URL — la necesita `forgot-password.html` para el enlace de recuperación.
+4. En **Authentication → URL Configuration**, agrega la URL donde publiques el sitio (ver paso 4) como Site URL y como Redirect URL — la necesita `forgot-password.html` y `register.html` para sus enlaces de correo.
+   - **URL oficial de este proyecto:** `https://zatvox.github.io/NG-admin-system/`
+   - Site URL: `https://zatvox.github.io/NG-admin-system/login.html`
+   - Redirect URLs (agregar esta línea, con el asterisco): `https://zatvox.github.io/NG-admin-system/*`
+   - Mientras se siga probando en Live Server local, agrega TAMBIÉN `http://127.0.0.1:5500/*` a Redirect URLs — no hace falta borrarla después, se pueden tener varias a la vez.
 
 ## 2. Correr el SQL
 
@@ -39,10 +43,12 @@ Con eso alcanza. El sistema detecta automáticamente que ya no está en modo dem
 
 ## 4. Publicar en GitHub Pages
 
-1. Sube todo el contenido de esta carpeta a un repositorio de GitHub (público o privado con GitHub Pro/Team).
+**Repo oficial:** `zatvox/NG-admin-system` — **URL publicada:** `https://zatvox.github.io/NG-admin-system/`
+
+1. Sube el contenido de ESTA carpeta (`sistema-web/`) a la RAÍZ del repositorio `NG-admin-system` (no como subcarpeta — así `login.html` queda en `.../NG-admin-system/login.html`, que es la URL oficial de arriba).
 2. En **Settings → Pages**, elige la branch (ej. `main`) y carpeta raíz (`/`).
-3. Espera 1-2 minutos y entra a la URL que te da GitHub Pages.
-4. Vuelve a Supabase → Authentication → URL Configuration y agrega esa URL como Redirect URL (si no lo hiciste en el paso 1).
+3. Espera 1-2 minutos y entra a `https://zatvox.github.io/NG-admin-system/login.html`.
+4. Confirma en Supabase → Authentication → URL Configuration que Site URL y Redirect URLs ya apuntan a esa misma URL (ver paso 1 de esta guía — ya debería estar hecho).
 
 ## 5. Dar de alta a las primeras personas
 
