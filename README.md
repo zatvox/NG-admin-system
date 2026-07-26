@@ -1,5 +1,7 @@
 # Nueva Generación — Sistema de Comisiones
 
+## link directo: https://zatvox.github.io/NG-admin-system/
+
 Sistema web para una organización social-política estructurada en 5 comisiones, cada una con sus propios comandos operativos (subgrupos), tareas, calendario, comunicados y biblioteca de enlaces. Ver `especificaciones-sistema-comisiones.md` para el contexto completo y `especificaciones-sistema-comisiones.pdf` para compartirlo fuera del sistema.
 
 ## Estado actual
