@@ -203,3 +203,26 @@ select 'auth.users' as tabla, id, email, created_at from auth.users where email 
 union all
 select 'usuarios' as tabla, id, email, created_at from usuarios where email = 'CORREO_QUE_INTENTASTE@ejemplo.com';
 
+
+-- =====================================================================
+-- 2026-07-25 — Miembro ahora ve TODO el róster de su propia comisión
+-- (antes solo veía su propia fila en "membresias")
+-- ---------------------------------------------------------------------
+-- Motivo: un Miembro debe poder ver (sólo lectura, sin poder crear ni
+-- borrar membresías) a todas las personas de los comandos hermanos
+-- dentro de SU MISMA comisión — misma transparencia lateral que ya
+-- tienen tareas/comandos. Antes, membresias_select solo dejaba ver la
+-- propia fila (o todo, si eras Dirección/Líder/Coordinador), así que un
+-- Miembro veía "Miembros (0)" o listas incompletas al entrar a un
+-- comando que no era el suyo. Esto NO cambia membresias_insert/delete:
+-- Miembro sigue sin poder agregar ni quitar gente de ningún comando.
+-- =====================================================================
+drop policy if exists membresias_select on membresias;
+create policy membresias_select on membresias for select using (
+  usuario_id = auth.uid()
+  or fn_es_direccion(auth.uid())
+  or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
+  or fn_es_coordinador_de_la_comision(auth.uid(), comando_id)
+  or fn_pertenece_comision(auth.uid(), fn_comision_de_comando(comando_id))
+);
+

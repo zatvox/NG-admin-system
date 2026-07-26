@@ -201,8 +201,14 @@ create policy comandos_update on comandos for update using (
 -- ---------------------------------------------------------------------
 -- MEMBRESÍAS (= base del Directorio)
 -- Ver: Dirección; Líder de esa comisión; Coordinador/secretario de
---      cualquier comando de esa comisión. Miembro y Colaborador NO ven
---      el directorio (privacidad de contactos, spec secc. 3 notas).
+--      cualquier comando de esa comisión; y (2026-07-25) cualquier
+--      Miembro que pertenezca a esa MISMA comisión — puede ver el
+--      róster completo (todos los comandos hermanos) en modo SOLO
+--      LECTURA, misma transparencia lateral que ya tienen tareas y
+--      comandos. Sigue sin poder crear ni borrar membresías: eso lo
+--      controla exclusivamente membresias_insert/delete, y ninguna de
+--      las dos le da permiso a Miembro. Colaborador (sin comisión
+--      todavía) sigue sin ver nada de esto.
 -- Crear/editar: Dirección, Líder de la comisión, o Coordinador (solo
 --      puede agregar miembros a SU PROPIO comando).
 -- ---------------------------------------------------------------------
@@ -211,6 +217,7 @@ create policy membresias_select on membresias for select using (
   or fn_es_direccion(auth.uid())
   or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
   or fn_es_coordinador_de_la_comision(auth.uid(), comando_id)
+  or fn_pertenece_comision(auth.uid(), fn_comision_de_comando(comando_id))
 );
 
 create policy membresias_insert on membresias for insert with check (
