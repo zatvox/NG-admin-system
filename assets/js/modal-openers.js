@@ -38,7 +38,8 @@
         { name: "nombre", label: "Nombre del comando operativo", type: "text", required: true, placeholder: "Ej. Comando Regional — Arequipa" },
         { name: "coordinador", label: "Coordinador/a", type: "text", required: true, placeholder: "Nombre del coordinador o coordinadora" },
         { name: "secretario1", label: "Secretario/a de apoyo 1 (opcional)", type: "text" },
-        { name: "secretario2", label: "Secretario/a de apoyo 2 (opcional)", type: "text" }
+        { name: "secretario2", label: "Secretario/a de apoyo 2 (opcional)", type: "text" },
+        { name: "enlaceUrl", label: "Enlace del grupo (WhatsApp u otro, opcional)", type: "url", placeholder: "https://chat.whatsapp.com/..." }
       ],
       onSave: function (v) { return global.NG_DATA.comisiones.crearComando(c.id, v); }
     });

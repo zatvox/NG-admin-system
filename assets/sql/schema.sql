@@ -86,11 +86,13 @@ create table if not exists comandos (
   slug         text not null,
   nombre       text not null,
   region       text, -- solo aplica a comandos de la comisión Organización
+  enlace_url   text, -- link del grupo de coordinación del comando (WhatsApp u otro), opcional
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (comision_id, slug)
 );
 comment on table comandos is 'Comando operativo (subgrupo) dentro de una comisión. 27 filas para Organización, generadas por loop en seed-demo.sql.';
+comment on column comandos.enlace_url is 'Enlace directo del grupo de coordinación de ESTE comando (ej. link de WhatsApp). Distinto de la tabla "enlaces", que es la biblioteca de recursos de la comisión entera.';
 
 -- ---------------------------------------------------------------------
 -- 4. MEMBRESÍAS — usuario ↔ comando, con el rol CONTEXTUAL a ese comando.
@@ -256,17 +258,40 @@ end $$;
 
 -- 10.2 Alta automática en `usuarios` cuando alguien se registra en
 --      Supabase Auth (register.html hace supabase.auth.signUp()).
+--      El bloque interno "begin...exception when others" es a propósito
+--      (2026-07-26): este proyecto comparte auth.users con otras apps en
+--      el mismo Supabase (ej. una app de tarjetas de presentación con su
+--      propio trigger). CUALQUIER trigger sobre auth.users que no atrape
+--      sus errores puede tumbar el signUp() de TODAS las apps que
+--      comparten esa tabla, no solo la suya — pasó exactamente eso y
+--      causó un 500 "Database error saving new user" en todos los
+--      registros nuevos. Por eso esta función nunca debe dejar escapar
+--      una excepción: si algo falla, se registra como warning y el
+--      registro de la persona sigue su curso con normalidad.
+--
+--      "public.usuarios" (con el esquema explícito) es OBLIGATORIO acá,
+--      no cosmético: un trigger disparado desde auth.users corre con el
+--      search_path de ese contexto, que NO incluye "public" por defecto.
+--      Escribir solo "usuarios" (sin el esquema) daba el error real que
+--      quedaba atrapado en silencio por el bloque de arriba: "relation
+--      usuarios does not exist" — la tabla existe, pero no la encontraba.
 create or replace function fn_nuevo_usuario_auth()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 begin
-  insert into usuarios (id, email, nombre, estado)
-  values (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data->>'nombre', split_part(new.email,'@',1)),
-    'pendiente_activacion'
-  )
-  on conflict (id) do nothing;
+  begin
+    insert into public.usuarios (id, email, nombre, estado)
+    values (
+      new.id,
+      new.email,
+      coalesce(new.raw_user_meta_data->>'nombre', split_part(new.email,'@',1)),
+      'pendiente_activacion'
+    )
+    on conflict (id) do nothing;
+  exception when others then
+    raise warning 'fn_nuevo_usuario_auth() falló para % (no se detuvo el registro): %', new.email, sqlerrm;
+  end;
   return new;
 end;
 $$;

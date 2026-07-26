@@ -86,10 +86,15 @@
   function subgrupoCard(s, c, persona) {
     var pendientes = s.tareas.filter(function (t) { return t.estado !== "hecho"; }).length;
     var allowed = global.NG_PERMS.canAccessSubgrupo(persona, c.id);
-    // Un Colaborador (sin comando todavía) no "entra" a ningún tablero, pero
-    // sí puede sumarse aquí mismo — es el paso 2 del auto-enlistamiento
-    // (paso 1 = entrar a la comisión desde "Comisiones" / botón "Enlistarse").
-    var puedeUnirse = !allowed && persona.rol === "colaborador";
+    // (2026-07-25) Cualquiera puede ver TODOS los comandos de TODAS las
+    // comisiones (lectura abierta, ver rls-policies.sql), pero solo entra
+    // al tablero si es de esa comisión — "no clicleable" para el resto.
+    // Cualquier persona sin privilegios de estructura (o sea, todos menos
+    // Dirección/Líder, que ya tienen acceso total) puede sumarse a un
+    // comando ajeno con "Unirme a este comando" — es el paso 2 del
+    // auto-enlistamiento (paso 1 = entrar a la comisión desde "Comisiones"
+    // / botón "Enlistarse"), y no importa si ya pertenece a otra comisión.
+    var puedeUnirse = !allowed && persona.rol !== "direccion" && persona.rol !== "lider";
     var card = el("div", { class: "card" + (allowed ? " card-clickable" : ""), style: (allowed || puedeUnirse) ? "" : "opacity:.6;" }, [
       el("div", { class: "comision-name", style: "font-size:14px;margin-bottom:6px;" }, [s.nombre]),
       el("div", { class: "comision-lead" }, ["Coordinador/a: " + s.coordinador]),

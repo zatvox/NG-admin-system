@@ -146,15 +146,19 @@ drop policy if exists auditoria_select        on auditoria;
 
 -- ---------------------------------------------------------------------
 -- USUARIOS
--- Ver: uno mismo, Dirección, o alguien con quien comparte comisión
---      (para que el Directorio pueda mostrar nombres).
+-- Ver: (2026-07-26) CUALQUIER persona autenticada — mismo criterio de
+--      "ver todo" que comandos/tareas/membresias: si vas a poder ver que
+--      alguien es coordinador de un comando, también hace falta poder
+--      resolver SU NOMBRE (el join usuarios(nombre) se hace desde
+--      membresias). Antes esto solo dejaba ver nombres de gente con
+--      quien ya compartías comando, y por eso "Colaborador sin comando"
+--      no podía leer el nombre de ningún coordinador — el join volvía
+--      null y la UI truena al leerlo (fix también aplicado en cliente).
 -- Editar: solo su propia fila (perfil), nunca es_direccion ni estado
 --         (esos campos los cambia Dirección vía panel/soporte, no el propio usuario).
 -- ---------------------------------------------------------------------
 create policy usuarios_select on usuarios for select using (
-  id = auth.uid()
-  or fn_es_direccion(auth.uid())
-  or fn_comparten_comando(auth.uid(), usuarios.id)
+  auth.uid() is not null
 );
 
 create policy usuarios_update_propio on usuarios for update using (
@@ -183,11 +187,17 @@ create policy comisiones_insert on comisiones for insert with check (
 
 -- ---------------------------------------------------------------------
 -- COMANDOS
--- Ver: Dirección siempre; cualquiera que pertenezca a esa comisión.
+-- Ver: (2026-07-25) CUALQUIER persona autenticada, esté o no asignada a
+--      esa comisión — igual que en la demo, cualquiera puede ver qué
+--      comisiones y comandos existen en toda la organización. Lo que
+--      NO da esto es acceso al tablero de tareas de un comando ajeno:
+--      eso lo sigue bloqueando el cliente (canAccessSubgrupo en
+--      permissions.js — la tarjeta no es "clicleable" si no eres de esa
+--      comisión) y, para el contenido de las tareas en sí, tareas_select.
 -- Crear: Dirección, o Líder de esa comisión ("+ Crear comando operativo").
 -- ---------------------------------------------------------------------
 create policy comandos_select on comandos for select using (
-  fn_es_direccion(auth.uid()) or fn_pertenece_comision(auth.uid(), comision_id)
+  auth.uid() is not null
 );
 
 create policy comandos_insert on comandos for insert with check (
@@ -200,24 +210,18 @@ create policy comandos_update on comandos for update using (
 
 -- ---------------------------------------------------------------------
 -- MEMBRESÍAS (= base del Directorio)
--- Ver: Dirección; Líder de esa comisión; Coordinador/secretario de
---      cualquier comando de esa comisión; y (2026-07-25) cualquier
---      Miembro que pertenezca a esa MISMA comisión — puede ver el
---      róster completo (todos los comandos hermanos) en modo SOLO
---      LECTURA, misma transparencia lateral que ya tienen tareas y
---      comandos. Sigue sin poder crear ni borrar membresías: eso lo
---      controla exclusivamente membresias_insert/delete, y ninguna de
---      las dos le da permiso a Miembro. Colaborador (sin comisión
---      todavía) sigue sin ver nada de esto.
+-- Ver: (2026-07-25) CUALQUIER persona autenticada — mismo criterio que
+--      comandos_select: en la demo cualquiera veía quién integra cada
+--      comando, esté o no esa persona asignada a esa comisión. Lo único
+--      restringido de verdad es ESCRIBIR aquí: crear/quitar membresías
+--      sigue siendo solo Dirección, Líder de la comisión o Coordinador
+--      del comando (más el auto-enlistamiento de uno mismo como
+--      Miembro), nunca lectura libre implica permiso de editar.
 -- Crear/editar: Dirección, Líder de la comisión, o Coordinador (solo
 --      puede agregar miembros a SU PROPIO comando).
 -- ---------------------------------------------------------------------
 create policy membresias_select on membresias for select using (
-  usuario_id = auth.uid() -- uno siempre ve sus propias membresías (para saber su rol)
-  or fn_es_direccion(auth.uid())
-  or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
-  or fn_es_coordinador_de_la_comision(auth.uid(), comando_id)
-  or fn_pertenece_comision(auth.uid(), fn_comision_de_comando(comando_id))
+  auth.uid() is not null
 );
 
 create policy membresias_insert on membresias for insert with check (
@@ -231,20 +235,25 @@ create policy membresias_delete on membresias for delete using (
   fn_es_direccion(auth.uid())
   or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
   or fn_es_coordinador(auth.uid(), comando_id)
+  or usuario_id = auth.uid() -- auto-salida: cualquier persona puede borrar su PROPIA membresía ("Salir de este comando"), simétrico al auto-enlistamiento de membresias_insert
 );
 
 -- ---------------------------------------------------------------------
 -- TAREAS
--- Ver: Dirección; Líder de la comisión; cualquiera que pertenezca a la
---      comisión del comando (transparencia lateral entre comandos hermanos).
+-- Ver: (2026-07-25) CUALQUIER persona autenticada puede ver el tablero
+--      de tareas de CUALQUIER comando (mismo criterio de "ver todo" que
+--      comandos_select/membresias_select). El cliente sigue sin dejar
+--      NAVEGAR al tablero de un comando ajeno (canAccessSubgrupo), pero
+--      eso es solo UX — quien de verdad necesita bloquear datos es el
+--      backend, y aquí el dato que hay que proteger es poder EDITAR, no
+--      verlo (transparencia total, igual que en la demo original).
 -- Editar estado: Dirección; Líder de su comisión; Coordinador de su
---      propio comando; Miembro SOLO si la tarea está asignada a él/ella.
+--      propio comando; Miembro SOLO si la tarea está asignada a él/ella
+--      Y pertenece al comando en el que se enlistó.
 -- Crear: Dirección, Líder, Coordinador (no Miembro, según la UI actual).
 -- ---------------------------------------------------------------------
 create policy tareas_select on tareas for select using (
-  fn_es_direccion(auth.uid())
-  or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
-  or fn_pertenece_comision(auth.uid(), fn_comision_de_comando(comando_id))
+  auth.uid() is not null
 );
 
 create policy tareas_insert on tareas for insert with check (
@@ -275,15 +284,7 @@ create policy tareas_update on tareas for update using (
 --      (eso lo controla tareas_update, no esta tabla).
 -- ---------------------------------------------------------------------
 create policy tarea_asignados_select on tarea_asignados for select using (
-  exists (
-    select 1 from tareas t
-    where t.id = tarea_asignados.tarea_id
-      and (
-        fn_es_direccion(auth.uid())
-        or fn_es_lider(auth.uid(), fn_comision_de_comando(t.comando_id))
-        or fn_pertenece_comision(auth.uid(), fn_comision_de_comando(t.comando_id))
-      )
-  )
+  auth.uid() is not null -- mismo criterio de "ver todo" que tareas_select
 );
 
 create policy tarea_asignados_write on tarea_asignados for all using (
@@ -310,14 +311,12 @@ create policy tarea_asignados_write on tarea_asignados for all using (
 
 -- ---------------------------------------------------------------------
 -- EVENTOS
--- Ver: alcance general -> todo autenticado; alcance comisión -> Dirección
---      o quien pertenezca a esa comisión.
+-- Ver: (2026-07-25) cualquier autenticado, sea "general" o de una
+--      comisión específica — mismo criterio de "ver todo" de arriba.
 -- Crear: Dirección, Líder, Coordinador (igual que en la UI del calendario).
 -- ---------------------------------------------------------------------
 create policy eventos_select on eventos for select using (
-  alcance = 'general'
-  or fn_es_direccion(auth.uid())
-  or fn_pertenece_comision(auth.uid(), comision_id)
+  auth.uid() is not null
 );
 
 create policy eventos_insert on eventos for insert with check (
@@ -332,13 +331,11 @@ create policy eventos_insert on eventos for insert with check (
 
 -- ---------------------------------------------------------------------
 -- COMUNICADOS
--- Ver: igual que eventos. Publicar: solo Dirección y Líder (la spec no
--- da esta capacidad a Coordinador).
+-- Ver: (2026-07-25) cualquier autenticado, mismo criterio de "ver todo".
+-- Publicar: solo Dirección y Líder (la spec no da esta capacidad a Coordinador).
 -- ---------------------------------------------------------------------
 create policy comunicados_select on comunicados for select using (
-  alcance = 'general'
-  or fn_es_direccion(auth.uid())
-  or fn_pertenece_comision(auth.uid(), comision_id)
+  auth.uid() is not null
 );
 
 create policy comunicados_insert on comunicados for insert with check (
@@ -348,14 +345,14 @@ create policy comunicados_insert on comunicados for insert with check (
 );
 
 -- ---------------------------------------------------------------------
--- ENLACES — biblioteca compartida entre TODAS las comisiones para
--- cualquiera que ya esté asignado (no para Colaborador sin comisión).
+-- ENLACES — biblioteca compartida. (2026-07-25) visible para cualquier
+-- autenticado, esté o no asignado a un comando — mismo criterio de
+-- "ver todo" de arriba (antes requería fn_tiene_membresia para los
+-- enlaces generales, ahora ni eso hace falta).
 -- Publicar: Dirección, Líder, Coordinador.
 -- ---------------------------------------------------------------------
 create policy enlaces_select on enlaces for select using (
-  fn_es_direccion(auth.uid())
-  or (comision_id is null and fn_tiene_membresia(auth.uid()))
-  or fn_pertenece_comision(auth.uid(), comision_id)
+  auth.uid() is not null
 );
 
 create policy enlaces_insert on enlaces for insert with check (

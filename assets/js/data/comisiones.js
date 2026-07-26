@@ -19,8 +19,13 @@
   var MOCK = global.NG_MOCK;
 
   async function listarComisionesReal() {
+    // "lider:usuarios!lider_id(nombre)" resuelve el NOMBRE del líder vía el
+    // FK comisiones.lider_id -> usuarios.id. Antes solo se guardaba
+    // "liderId" (el uuid) y nunca se traía el nombre — por eso el chip
+    // siempre mostraba "Líder: —" aunque ya hubieras asignado lider_id en
+    // la tabla comisiones: el dato nunca llegaba a la UI.
     var [{ data: comisiones }, { data: comandos }, { data: membresias }, { data: tareas }, { data: asignaciones }] = await Promise.all([
-      db.from("comisiones").select("*").order("orden"),
+      db.from("comisiones").select("*, lider:usuarios!lider_id(nombre)").order("orden"),
       db.from("comandos").select("*"),
       db.from("membresias").select("usuario_id, comando_id, rol, usuarios(nombre)"),
       db.from("tareas").select("*"),
@@ -31,19 +36,23 @@
       var comandosDeEsta = (comandos || []).filter(function (cd) { return cd.comision_id === c.id; });
       return {
         id: c.id, nombre: c.nombre, color: c.color, mision: c.mision, liderId: c.lider_id,
+        lider: (c.lider && c.lider.nombre) ? c.lider.nombre : null,
         subgrupos: comandosDeEsta.map(function (cd) {
           var miembrosDeEste = (membresias || []).filter(function (m) { return m.comando_id === cd.id; });
           var coordinador = miembrosDeEste.filter(function (m) { return m.rol === "coordinador"; })[0];
           return {
-            id: cd.id, nombre: cd.nombre, region: cd.region,
-            coordinador: coordinador ? coordinador.usuarios.nombre : "Sin asignar",
-            miembros: miembrosDeEste.map(function (m) { return m.usuarios.nombre; }),
+            id: cd.id, nombre: cd.nombre, region: cd.region, enlaceUrl: cd.enlace_url || null,
+            // "m.usuarios" puede venir null si el embed no encontró el
+            // perfil (perfil borrado, o RLS de "usuarios" bloqueándolo) —
+            // nunca asumir que existe, aunque la fila de membresía sí.
+            coordinador: (coordinador && coordinador.usuarios) ? coordinador.usuarios.nombre : "Sin asignar",
+            miembros: miembrosDeEste.map(function (m) { return m.usuarios ? m.usuarios.nombre : "(perfil no disponible)"; }),
             // miembrosConId conserva el usuario_id real (uuid), a diferencia de
             // "miembros" (solo nombres, usado para mostrar chips). El selector
             // "Asignado a" del modal de tareas necesita el id, no el nombre —
             // mandar el nombre ahí causaba "invalid input syntax for type uuid"
             // (POST /tareas 400) porque asignado_id es una columna uuid.
-            miembrosConId: miembrosDeEste.map(function (m) { return { id: m.usuario_id, nombre: m.usuarios.nombre }; }),
+            miembrosConId: miembrosDeEste.map(function (m) { return { id: m.usuario_id, nombre: m.usuarios ? m.usuarios.nombre : "(perfil no disponible)" }; }),
             tareas: (tareas || []).filter(function (t) { return t.comando_id === cd.id; }).map(function (t) { return mapTarea(t, asignaciones); })
           };
         })
@@ -95,7 +104,10 @@
       return null;
     }
     var slug = global.NG_UTILS.slugify(payload.nombre);
-    var { data, error } = await db.from("comandos").insert({ comision_id: comisionId, slug: slug, nombre: payload.nombre }).select().single();
+    var { data, error } = await db.from("comandos").insert({
+      comision_id: comisionId, slug: slug, nombre: payload.nombre,
+      enlace_url: payload.enlaceUrl || null
+    }).select().single();
     if (error) throw error;
     return data;
   }
@@ -147,12 +159,33 @@
     return data;
   }
 
+  // Salir de un comando: contraparte de unirseComando(). Borra la propia
+  // fila de membresías (usuario_id = auth.uid()); lo permite membresias_delete
+  // gracias a la cláusula "or usuario_id = auth.uid()" agregada en
+  // rls-policies.sql (2026-07-26) — antes esa política solo dejaba borrar a
+  // Dirección/Líder/Coordinador, y un Miembro no podía ni siquiera salirse
+  // de su propio comando.
+  async function salirComando(comandoId) {
+    if (!db) {
+      global.NG_TOAST && global.NG_TOAST.show("Modo demo: salir de un comando se activa al conectar Supabase.", "info");
+      return null;
+    }
+    var { data: userData, error: eUser } = await db.auth.getUser();
+    if (eUser) throw eUser;
+    var { error } = await db.from("membresias")
+      .delete()
+      .eq("usuario_id", userData.user.id)
+      .eq("comando_id", comandoId);
+    if (error) throw error;
+  }
+
   global.NG_DATA = global.NG_DATA || {};
   global.NG_DATA.comisiones = {
     listar: listarComisiones,
     crearComando: crearComando,
     crearTarea: crearTarea,
     actualizarEstadoTarea: actualizarEstadoTarea,
-    unirseComando: unirseComando
+    unirseComando: unirseComando,
+    salirComando: salirComando
   };
 })(window);

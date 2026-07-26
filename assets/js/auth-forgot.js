@@ -21,7 +21,12 @@
       var btn = q("#forgot-btn");
       btn.disabled = true; btn.textContent = "Enviando…";
 
-      var redirectTo = window.location.origin + window.location.pathname.replace("forgot-password.html", "login.html");
+      // (2026-07-26) Iba a login.html — pero esa página no sabe leer el
+      // token de recuperación que trae el link del correo, así que el
+      // usuario llegaba a un login normal, sin forma real de poner una
+      // contraseña nueva. Debe ir a reset-password.html, que sí procesa
+      // esa sesión especial y muestra el formulario de "nueva contraseña".
+      var redirectTo = window.location.origin + window.location.pathname.replace("forgot-password.html", "reset-password.html");
       window.NG_AUTH.forgotPassword(email, redirectTo)
         .then(function () {
           q("#forgot-form").style.display = "none";

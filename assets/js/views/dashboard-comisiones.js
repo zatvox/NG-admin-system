@@ -143,10 +143,42 @@
       canManage ? S.actionBtn("+ Nueva tarea", function () { global.NG_openNuevaTareaModalSubgrupo(s, c); }) : null
     ].filter(Boolean)));
 
+    // Enlace del grupo de coordinación de ESTE comando (ej. WhatsApp),
+    // guardado en comandos.enlace_url — distinto de la biblioteca de
+    // enlaces general de la comisión. Solo se muestra si existe.
+    if (s.enlaceUrl) {
+      root.appendChild(el("a", {
+        href: s.enlaceUrl, target: "_blank", rel: "noopener noreferrer",
+        class: "btn btn-ghost", style: "margin-bottom:16px;font-size:12.5px;padding:7px 12px;display:inline-block;"
+      }, ["Abrir grupo de coordinación ↗"]));
+    }
+
     root.appendChild(el("div", { class: "section-title" }, ["Miembros (" + (s.miembros || []).length + ")"]));
     var chips = el("div", { style: "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;" });
     (s.miembros || []).forEach(function (m) { chips.appendChild(el("span", { class: "chip" }, [el("span", { class: "dot", style: "background:" + c.color + ";width:6px;height:6px;" }), m])); });
     root.appendChild(chips);
+
+    // "Salir de comando": solo para quien se enlistó como Miembro en ESTE
+    // comando puntual (contraparte de "Unirme a este comando" en shared.js).
+    // No se ofrece a Coordinador/Líder/Dirección: su membresía/cargo la
+    // gestiona quien administra el comando, no un botón de autoservicio.
+    if (p.rol === "miembro" && p.subgrupoId === s.id) {
+      var leaveBtn = el("button", { class: "btn btn-ghost", type: "button", style: "margin-bottom:16px;font-size:12px;padding:7px 12px;" }, ["Salir de este comando"]);
+      leaveBtn.addEventListener("click", function () {
+        if (!window.confirm("¿Seguro que quieres salir de \"" + s.nombre + "\"? Perderás el acceso a sus tareas.")) return;
+        leaveBtn.disabled = true; leaveBtn.textContent = "Saliendo…";
+        global.NG_DATA.comisiones.salirComando(s.id)
+          .then(function () {
+            global.NG_TOAST.show("Saliste de " + s.nombre + ".", "success");
+            if (global.NG_refreshPersonaAndGo) global.NG_refreshPersonaAndGo("#/comisiones/" + c.id);
+          })
+          .catch(function (err) {
+            leaveBtn.disabled = false; leaveBtn.textContent = "Salir de este comando";
+            global.NG_TOAST.show(global.NG_ERR.format(err), "error");
+          });
+      });
+      root.appendChild(leaveBtn);
+    }
 
     root.appendChild(el("div", { class: "section-title" }, ["Tablero de tareas"]));
     root.appendChild(S.kanbanBoard(s.tareas, { comisionId: c.id, subgrupoId: s.id }, p));

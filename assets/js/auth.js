@@ -123,6 +123,16 @@
     if (error) throw error;
   }
 
+  // El link del correo de recuperación abre una sesión especial de tipo
+  // "recovery" (Supabase la arma solo con el token del link, sin pedir
+  // contraseña). updateUser() es la única llamada válida para cerrar ese
+  // flujo: cambia la contraseña de ESA sesión recién creada. Se usa desde
+  // reset-password.html (ver auth-reset.js).
+  async function realUpdatePassword(password) {
+    var { error } = await db.auth.updateUser({ password: password });
+    if (error) throw error;
+  }
+
   async function realSession() {
     var { data } = await db.auth.getSession();
     if (!data || !data.session) return null;
@@ -164,6 +174,12 @@
         return Promise.reject(new Error("La recuperación de contraseña requiere Supabase conectado. En modo demo no hace falta contraseña."));
       }
       return realForgotPassword(email, redirectTo);
+    },
+    updatePassword: function (password) {
+      if (!cfg.IS_SUPABASE_CONFIGURED) {
+        return Promise.reject(new Error("Esto requiere Supabase conectado."));
+      }
+      return realUpdatePassword(password);
     },
     getSession: function () {
       return cfg.IS_SUPABASE_CONFIGURED ? realSession() : Promise.resolve(demoSession());
