@@ -1,0 +1,24 @@
+/* =====================================================================
+ * responsive.css — Breakpoints generales del shell de la app (sidebar
+ * colapsable en móvil, kanban a 1 columna, prefers-reduced-motion).
+ * Se carga AL FINAL para poder sobreescribir lo anterior. Cada módulo
+ * (calendar.css, auth.css) ya trae sus propios @media puntuales junto
+ * a sus reglas — aquí solo van los breakpoints que cruzan varios
+ * componentes del shell.
+ * ===================================================================== */
+
+  @media(max-width:900px){
+    .kanban{grid-template-columns:1fr;}
+  }
+  @media(max-width:860px){
+    #sidebar{transform:translateX(-100%);}
+    #sidebar.open{transform:translateX(0);}
+    #main-col{margin-left:0;}
+    #hamburger{display:flex;}
+    #overlay.show{display:block;}
+    .persona-switch select{min-width:150px;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms!important;transition-duration:.001ms!important;}
+  }
+</style>

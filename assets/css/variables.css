@@ -1,0 +1,33 @@
+/* =====================================================================
+ * variables.css — Paleta y tokens de diseño. Se carga PRIMERO en toda
+ * página (login, registro, recuperar contraseña, app). Si Dirección
+ * cambia colores desde el módulo de Configuración, esos valores se
+ * inyectan como estilos inline sobre estas mismas variables (ver
+ * assets/js/views-configuracion.js) — nunca se edita este archivo a mano.
+ * ===================================================================== */
+
+  :root{
+    --ink:#16213E;
+    --ink-2:#202C52;
+    --paper:#F3F5F8;
+    --surface:#FFFFFF;
+    --text:#1B2333;
+    --text-soft:#5B6478;
+    --text-faint:#8A93A6;
+    --border:#E3E6EC;
+    --accent:#D9A426;
+    --accent-ink:#5C4400;
+    --ok:#2E8B57;
+    --warn:#C77B15;
+    --pending:#8A93A6;
+    --danger:#C0392B;
+    --c-comunidad:#2FA0A0;
+    --c-organizacion:#4C5FD5;
+    --c-eventos:#E0563A;
+    --c-formacion:#7A5FC7;
+    --c-comunicaciones:#D9A426;
+    --radius:10px;
+    --shadow:0 1px 2px rgba(22,33,62,.06), 0 8px 24px -12px rgba(22,33,62,.12);
+    --sidebar-w:230px;
+    --topbar-h:60px;
+  }

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ingresar — Nueva Generación</title>
+<link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/variables.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/auth.css">
+<style>
+  body{font-family:'Inter',system-ui,sans-serif;}
+  .auth-links{display:flex;justify-content:space-between;margin-top:14px;font-size:12.5px;}
+  .auth-links a{color:var(--text-soft);text-decoration:none;cursor:pointer;}
+  .auth-links a:hover{color:var(--ink);text-decoration:underline;}
+  .form-error{display:none;background:#FBE9E7;color:var(--danger);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:14px;}
+  #demo-banner{display:none;background:#FCF1D7;color:var(--accent-ink);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:18px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-card">
+    <span class="login-eyebrow"><span class="login-dot"></span>NUEVA GENERACIÓN</span>
+    <h1>Sistema de Comisiones</h1>
+    <p class="sub">Ingresa con tu cuenta para ver tus tareas, tu comisión y el calendario compartido.</p>
+
+    <div id="demo-banner">
+      Este sistema todavía no está conectado a la base de datos real (ver <code>assets/js/config.js</code>).
+      Mientras tanto, elige un perfil de demostración para explorar el sistema con esos permisos.
+    </div>
+
+    <!-- Bloque DEMO: se muestra solo si Supabase no está configurado -->
+    <div id="demo-block" style="display:none;">
+      <div class="field">
+        <label for="login-persona">Perfil de demo</label>
+        <select id="login-persona"></select>
+      </div>
+      <button class="btn btn-primary" id="demo-login-btn" type="button">Ingresar →</button>
+    </div>
+
+    <!-- Bloque REAL: login con Supabase Auth -->
+    <div id="real-block" style="display:none;">
+      <div id="login-error" class="form-error"></div>
+      <form id="real-login-form">
+        <div class="field">
+          <label for="login-email">Correo</label>
+          <input type="text" id="login-email" placeholder="tucorreo@ejemplo.com" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="login-password">Contraseña</label>
+          <div class="password-wrap">
+            <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Mostrar contraseña">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="real-login-btn" type="submit">Ingresar →</button>
+      </form>
+      <div class="auth-links">
+        <a href="register.html">Crear cuenta nueva</a>
+        <a href="forgot-password.html">¿Olvidaste tu contraseña?</a>
+      </div>
+    </div>
+
+    <p class="login-hint">Si te registras por primera vez, quedarás como "Colaborador" hasta que alguien de la comisión de Comunidad te asigne a un comando operativo.</p>
+  </div>
+</div>
+
+<!-- Orden de carga: cliente Supabase -> config -> data mock -> helpers -> auth -> lógica de la página -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/supabase-client.js"></script>
+<script src="assets/js/ui/dom.js"></script>
+<script src="assets/js/error-messages.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/data/mock-data.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/auth-login.js"></script>
+</body>
+</html>

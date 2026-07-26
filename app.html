@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Nueva Generación — Sistema de Comisiones</title>
+<link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Orden de CSS: variables -> base -> componentes -> layout del shell -> módulos -> responsive (al final, para poder sobreescribir) -->
+<link rel="stylesheet" href="assets/css/variables.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/calendar.css">
+<link rel="stylesheet" href="assets/css/responsive.css">
+</head>
+<body>
+
+<div id="app-shell" style="display:none;">
+  <div id="overlay"></div>
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="brand-title" id="brand-title">Nueva Generación</div>
+      <div class="brand-sub" id="brand-sub">Sistema de Comisiones</div>
+    </div>
+    <nav id="main-nav"></nav>
+    <div class="sidebar-foot" id="sidebar-foot">· · ·</div>
+  </aside>
+
+  <div id="main-col">
+    <header id="topbar">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="hamburger" aria-label="Abrir menú"><span></span></button>
+        <div id="page-title">Inicio</div>
+      </div>
+      <div class="topbar-right">
+        <!-- Solo visible si todavía no perteneces a ningún comando (Colaborador) -->
+        <button class="btn btn-accent" id="topbar-enlistarse" type="button" style="display:none;font-size:12.5px;padding:8px 14px;">+ Enlistarse</button>
+        <span class="chip" id="topbar-context" style="display:none;"></span>
+
+        <!-- Solo visible en modo demo: cambia de perfil sin credenciales -->
+        <div class="persona-switch" id="persona-switch" style="display:none;">
+          <span class="lbl">Ver como</span>
+          <select id="topbar-persona"></select>
+        </div>
+
+        <!-- Solo visible en modo real: nombre + cerrar sesión -->
+        <button class="btn btn-ghost" id="logout-btn" style="display:none;font-size:12.5px;padding:8px 12px;">Cerrar sesión</button>
+
+        <div class="avatar" id="topbar-avatar" style="width:34px;height:34px;font-size:13px;">--</div>
+      </div>
+    </header>
+    <main id="view-root"></main>
+  </div>
+</div>
+
+<div id="modal-overlay"><div id="modal-box"></div></div>
+<div id="toast" class="toast-base"></div>
+
+<!-- Núcleo: config -> cliente Supabase -> utilidades -> capa de datos -> permisos -> auth -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/supabase-client.js"></script>
+<script src="assets/js/ui/dom.js"></script>
+<script src="assets/js/error-messages.js"></script>
+<script src="assets/js/ui/toast.js"></script>
+<script src="assets/js/ui/modal.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/permissions.js"></script>
+<script src="assets/js/data/mock-data.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/data/comisiones.js"></script>
+<script src="assets/js/data/eventos.js"></script>
+<script src="assets/js/data/comunicados.js"></script>
+<script src="assets/js/data/enlaces.js"></script>
+<script src="assets/js/data/directorio.js"></script>
+<script src="assets/js/data/configuracion.js"></script>
+<script src="assets/js/modal-openers.js"></script>
+<!-- Constructores de UI compartidos entre varias vistas (tarjetas, kanban, listas) -->
+<script src="assets/js/views/shared.js"></script>
+<!-- Vistas agrupadas por dominio (ver ARCHITECTURE.md, "por qué 5 archivos y no 12") -->
+<script src="assets/js/views/dashboard-comisiones.js"></script>
+<script src="assets/js/views/tareas-calendario.js"></script>
+<script src="assets/js/views/comunicaciones-enlaces.js"></script>
+<script src="assets/js/views/directorio-reportes-perfil.js"></script>
+<script src="assets/js/views/configuracion.js"></script>
+<!-- Router + arranque, siempre al final -->
+<script src="assets/js/router.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

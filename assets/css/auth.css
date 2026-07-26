@@ -1,0 +1,37 @@
+/* =====================================================================
+ * auth.css — Estilos exclusivos de login.html / register.html /
+ * forgot-password.html (tarjeta centrada sobre fondo degradado).
+ * Depende de variables.css + base.css + components.css (botones/inputs).
+ * ===================================================================== */
+
+  /* ---------- Login ---------- */
+  #login-screen{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #1F2C56 0%, transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, #24325E 0%, transparent 55%),
+      var(--ink);
+    padding:24px;
+  }
+  .login-card{
+    width:100%;
+    max-width:420px;
+    background:var(--surface);
+    border-radius:16px;
+    padding:36px 32px 32px;
+    box-shadow:0 30px 60px -20px rgba(0,0,0,.45);
+  }
+  .login-eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--text-faint);margin-bottom:10px;
+  }
+  .login-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);}
+  .login-card h1{font-size:26px;margin:0 0 6px;color:var(--ink);}
+  .login-card p.sub{margin:0 0 26px;color:var(--text-soft);font-size:14px;line-height:1.5;}
+
+  .login-hint{margin-top:18px;font-size:12px;color:var(--text-faint);line-height:1.5;}

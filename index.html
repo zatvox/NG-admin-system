@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nueva Generación — Sistema de Comisiones</title>
+<link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+<!--
+  index.html es solo un enrutador de entrada, tal como pide el checklist
+  de entrega ("index.html funciona al abrir en el navegador"). No pinta
+  nada: revisa si hay sesión activa (real o de demo) y redirige a
+  app.html; si no hay sesión, redirige a login.html.
+-->
+<style>body{background:#16213E;}</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/supabase-client.js"></script>
+<script src="assets/js/ui/dom.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/data/mock-data.js"></script>
+<script src="assets/js/auth.js"></script>
+<script>
+  window.NG_AUTH.getSession()
+    .then(function (persona) { window.location.replace(persona ? "app.html" : "login.html"); })
+    .catch(function () { window.location.replace("login.html"); });
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "Nueva Generación — Sistema de Comisiones",
+  "short_name": "Nueva Generación",
+  "description": "Gestión de comisiones, comandos operativos, tareas y calendario compartido.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#16213E",
+  "theme_color": "#16213E",
+  "icons": [
+    { "src": "assets/images/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

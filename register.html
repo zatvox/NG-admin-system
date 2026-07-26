@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Crear cuenta — Nueva Generación</title>
+<link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/variables.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/auth.css">
+<style>
+  body{font-family:'Inter',system-ui,sans-serif;}
+  .auth-links{margin-top:14px;font-size:12.5px;text-align:center;}
+  .auth-links a{color:var(--text-soft);text-decoration:none;cursor:pointer;}
+  .auth-links a:hover{color:var(--ink);text-decoration:underline;}
+  .form-error{display:none;background:#FBE9E7;color:var(--danger);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:14px;}
+  #demo-banner{display:none;background:#FCF1D7;color:var(--accent-ink);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:18px;line-height:1.5;}
+  #register-success{display:none;background:#E4F3EA;color:var(--ok);border-radius:8px;padding:14px;font-size:13px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-card">
+    <span class="login-eyebrow"><span class="login-dot"></span>NUEVA GENERACIÓN</span>
+    <h1>Crear cuenta</h1>
+    <p class="sub">Regístrate para sumarte. Quedarás como "Colaborador" hasta que Comunidad te derive a una comisión.</p>
+
+    <div id="demo-banner">
+      El registro real requiere que Supabase esté conectado (ver <code>assets/js/config.js</code>).
+      Mientras tanto, vuelve a <a href="login.html">la pantalla de ingreso</a> y usa un perfil de demo.
+    </div>
+
+    <div id="register-success">
+      Cuenta creada. Revisa tu correo para confirmar la dirección y luego
+      <a href="login.html">inicia sesión</a>.
+    </div>
+
+    <form id="register-form">
+      <div id="register-error" class="form-error"></div>
+      <div class="field">
+        <label for="reg-nombre">Nombre completo</label>
+        <input type="text" id="reg-nombre" placeholder="Tu nombre y apellido" required>
+      </div>
+      <div class="field">
+        <label for="reg-email">Correo</label>
+        <input type="text" id="reg-email" placeholder="tucorreo@ejemplo.com" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="reg-password">Contraseña</label>
+        <div class="password-wrap">
+          <input type="password" id="reg-password" placeholder="Mínimo 8 caracteres" autocomplete="new-password" required>
+          <button type="button" class="password-toggle" id="reg-password-toggle" aria-label="Mostrar contraseña">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="reg-password2">Repetir contraseña</label>
+        <div class="password-wrap">
+          <input type="password" id="reg-password2" placeholder="Vuelve a escribirla" autocomplete="new-password" required>
+          <button type="button" class="password-toggle" id="reg-password2-toggle" aria-label="Mostrar contraseña">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="register-btn" type="submit">Crear cuenta</button>
+    </form>
+
+    <div class="auth-links"><a href="login.html">Ya tengo cuenta — ingresar</a></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/supabase-client.js"></script>
+<script src="assets/js/ui/dom.js"></script>
+<script src="assets/js/error-messages.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/data/mock-data.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/auth-register.js"></script>
+</body>
+</html>
