@@ -30,7 +30,7 @@
   async function listarTemas(comisiones) {
     if (!db) return [];
     var [{ data: temas, error: e1 }, { data: conteos, error: e2 }] = await Promise.all([
-      db.from("foro_temas").select("*, usuarios(nombre)").order("created_at", { ascending: false }),
+      db.from("foro_temas").select("*, usuarios!foro_temas_autor_id_fkey(nombre)").order("created_at", { ascending: false }),
       db.from("foro_comentarios").select("tema_id")
     ]);
     if (e1) throw e1;
@@ -42,7 +42,7 @@
 
   async function obtenerTema(id, comisiones) {
     if (!db) return null;
-    var { data, error } = await db.from("foro_temas").select("*, usuarios(nombre)").eq("id", id).maybeSingle();
+    var { data, error } = await db.from("foro_temas").select("*, usuarios!foro_temas_autor_id_fkey(nombre)").eq("id", id).maybeSingle();
     if (error) throw error;
     return data ? mapTema(data, 0, comisiones) : null;
   }
@@ -52,7 +52,7 @@
     var { data: userData } = await db.auth.getUser();
     var miId = userData && userData.user ? userData.user.id : null;
     var [{ data: comentarios, error: e1 }, { data: votos, error: e2 }] = await Promise.all([
-      db.from("foro_comentarios").select("*, usuarios(nombre)").eq("tema_id", temaId).order("created_at", { ascending: true }),
+      db.from("foro_comentarios").select("*, usuarios!foro_comentarios_autor_id_fkey(nombre)").eq("tema_id", temaId).order("created_at", { ascending: true }),
       db.from("foro_votos").select("comentario_id, usuario_id")
     ]);
     if (e1) throw e1;
