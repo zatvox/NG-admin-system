@@ -20,6 +20,7 @@
     { route: "directorio",      label: "Directorio",      roles: ["direccion","lider","coordinador"] },
     { route: "comunicaciones",  label: "Comunicados",     roles: ["direccion","lider","coordinador","miembro","colaborador"] },
     { route: "enlaces",         label: "Enlaces",         roles: ["direccion","lider","coordinador","miembro"] },
+    { route: "foro",            label: "Foro de Ideas",   roles: ["direccion","lider","coordinador","miembro","colaborador"] },
     { route: "reportes",        label: "Reportes",        roles: ["direccion"] },
     { route: "configuracion",   label: "Configuración",   roles: ["direccion"] }, // módulo nuevo, solo Dirección
     { route: "perfil",          label: "Mi perfil",       roles: ["direccion","lider","coordinador","miembro","colaborador"] }
@@ -75,6 +76,15 @@
     return persona.rol === "direccion" || persona.rol === "lider" || persona.rol === "coordinador";
   }
 
+  // Foro de Ideas: participar (crear tema, comentar, apoyar) está abierto
+  // a cualquier rol, incluido Colaborador — no hay canParticiparForo()
+  // porque no hay nada que filtrar. Cerrar con conclusión sí es más
+  // controlado: el autor del tema, Dirección, o cualquier Líder (espejo
+  // exacto de foro_temas_update en rls-policies.sql).
+  function canCerrarTemaForo(persona, tema) {
+    return persona.rol === "direccion" || persona.rol === "lider" || (tema && tema.autorId === persona.id);
+  }
+
   global.NG_PERMS = {
     NAV: NAV,
     canAccess: canAccess,
@@ -83,6 +93,7 @@
     canManageSubgrupo: canManageSubgrupo,
     canEditTask: canEditTask,
     canPostComunicado: canPostComunicado,
-    canPostEnlaceOEvento: canPostEnlaceOEvento
+    canPostEnlaceOEvento: canPostEnlaceOEvento,
+    canCerrarTemaForo: canCerrarTemaForo
   };
 })(window);

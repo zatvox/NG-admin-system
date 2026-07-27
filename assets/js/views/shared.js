@@ -163,11 +163,19 @@
     var comisionId = ctx ? ctx.comisionId : t.comisionId;
     var subgrupoId = ctx ? ctx.subgrupoId : t.subgrupoId;
     var editable = global.NG_PERMS.canEditTask(persona, t, comisionId, subgrupoId);
+    // Color de la comisión dueña de la tarea, para el borde izquierdo del
+    // cubito (mismo patrón --c que post-card/comisionCard). En la vista
+    // global de Tareas ya viene en t.comisionColor (armado por allTareas);
+    // dentro del tablero de UN comando no viene en la tarea, así que quien
+    // llama a kanbanBoard/taskCard pasa ctx.comisionColor (ver
+    // viewSubgrupoDetalle en dashboard-comisiones.js).
+    var comisionColor = t.comisionColor || (ctx && ctx.comisionColor) || null;
 
     var card = el("div", { class: "task-card" }, [
       el("div", { class: "task-title" }, [t.titulo]),
       el("div", { class: "task-meta" }, [el("span", {}, [(t.asignadosNombres || "Sin asignar") + " · " + U.fmtFecha(t.fecha)])])
     ]);
+    if (comisionColor) card.style.setProperty("--c", comisionColor);
     if (!editable) {
       card.querySelector(".task-meta").appendChild(el("span", { class: "badge-estado badge-" + t.estado }, [ESTADO_LABEL[t.estado]]));
       return card;

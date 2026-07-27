@@ -71,9 +71,65 @@
   #hamburger span::after{top:5px;}
   #page-title{font-size:15px;font-weight:600;color:var(--ink);}
   #page-title .mono{color:var(--text-faint);font-weight:400;font-size:12px;margin-left:8px;}
-  .topbar-right{display:flex;align-items:center;gap:14px;}
-  #topbar-context{white-space:normal;line-height:1.3;text-align:left;flex-shrink:1;max-width:300px;border-radius:10px;padding:6px 11px;align-items:flex-start;}
-  @media(max-width:640px){ #topbar-context{display:none!important;} }
+  .topbar-right{display:flex;align-items:center;gap:12px;}
+
+  /* ---------- Buscador global ---------- */
+  .topbar-search{position:relative;flex:1 1 260px;max-width:440px;min-width:120px;}
+  .topbar-search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-faint);pointer-events:none;}
+  #topbar-search{width:100%;padding:8px 12px 8px 34px;font-size:13px;border-radius:9px;background:var(--paper);}
+  #topbar-search:focus{background:var(--surface);}
+  @media(max-width:760px){ .topbar-search{display:none;} }
+
+  /* ---------- Paneles flotantes compartidos (búsqueda / crear / notificaciones) ---------- */
+  .topbar-panel{
+    display:none;
+    position:absolute; top:calc(100% + 8px); right:0;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    box-shadow:0 10px 30px -8px rgba(22,33,62,.22);
+    min-width:260px; max-width:360px; max-height:420px; overflow-y:auto;
+    z-index:50; padding:6px;
+  }
+  .topbar-search-results{left:0;right:auto;min-width:100%;width:100%;}
+  .topbar-panel.open{display:block;}
+  .topbar-panel-empty{padding:16px 12px;font-size:12.5px;color:var(--text-faint);text-align:center;}
+  .topbar-panel-group-label{padding:8px 10px 4px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);font-family:'IBM Plex Mono',monospace;}
+  .topbar-panel-item{display:block;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--ink);line-height:1.35;}
+  .topbar-panel-item:hover{background:var(--paper);}
+  .topbar-panel-item .sub{display:block;font-size:11px;color:var(--text-faint);margin-top:2px;}
+
+  /* ---------- Botón + / campana ---------- */
+  .topbar-dropdown{position:relative;}
+  .icon-btn{
+    position:relative;
+    width:36px;height:36px;
+    border-radius:9px;
+    background:var(--paper); border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--ink); font-size:19px; line-height:1;
+    cursor:pointer;
+  }
+  .icon-btn:hover{background:#fff;border-color:var(--ink);}
+  .icon-btn svg{width:17px;height:17px;}
+  .notif-badge{
+    position:absolute; top:-4px; right:-4px;
+    background:var(--danger); color:#fff;
+    font-size:9.5px; font-weight:700; line-height:1;
+    min-width:15px; height:15px; border-radius:100px;
+    display:flex; align-items:center; justify-content:center;
+    padding:0 3px; font-family:'IBM Plex Mono',monospace;
+  }
+
+  /* ---------- Chip de comisión/comando: pill más grande, con color propio, clickeable ---------- */
+  #topbar-context{
+    white-space:normal;line-height:1.3;text-align:left;flex-shrink:1;max-width:320px;
+    border-radius:100px;padding:8px 16px;align-items:flex-start;
+    background:color-mix(in srgb, var(--c,var(--accent)) 12%, var(--paper));
+    border:1px solid color-mix(in srgb, var(--c,var(--accent)) 35%, transparent);
+    text-decoration:none; cursor:pointer; transition:transform .12s ease;
+  }
+  #topbar-context:hover{transform:translateY(-1px);}
+  @media(max-width:900px){ #topbar-context{display:none!important;} }
+
   .persona-switch{display:flex;align-items:center;gap:8px;}
   .persona-switch select{width:auto;min-width:220px;padding:8px 10px;font-size:13px;}
   .persona-switch .lbl{font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;display:none;}

@@ -58,7 +58,7 @@
         S.kpi(s.tareas.filter(function (x) { return x.estado === "en_curso"; }).length, "En curso")
       ]));
       root.appendChild(el("div", { class: "section-title" }, ["Tablero de " + s.nombre]));
-      root.appendChild(S.kanbanBoard(s.tareas, { comisionId: info.comision.id, subgrupoId: s.id }, p));
+      root.appendChild(S.kanbanBoard(s.tareas, { comisionId: info.comision.id, subgrupoId: s.id, comisionColor: info.comision.color }, p));
     } else if (p.rol === "miembro") {
       var info2 = S.getSubgrupo(comisiones, p.subgrupoId);
       var s2 = info2.subgrupo, c2 = info2.comision;
@@ -181,7 +181,7 @@
     }
 
     root.appendChild(el("div", { class: "section-title" }, ["Tablero de tareas"]));
-    root.appendChild(S.kanbanBoard(s.tareas, { comisionId: c.id, subgrupoId: s.id }, p));
+    root.appendChild(S.kanbanBoard(s.tareas, { comisionId: c.id, subgrupoId: s.id, comisionColor: c.color }, p));
   }
 
   global.NG_VIEWS = global.NG_VIEWS || {};

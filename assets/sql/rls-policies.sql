@@ -83,6 +83,15 @@ returns boolean language sql stable security definer as $$
   );
 $$;
 
+-- ¿El usuario es Líder de CUALQUIER comisión (sin importar cuál)? Se usa
+-- en foro_temas_update: cualquier Líder puede ayudar a cerrar un tema con
+-- conclusión, no solo el de la comisión ligada al tema (el Foro es
+-- transversal a las 5 comisiones, no propiedad de una sola).
+create or replace function fn_es_lider_de_alguna(p_uid uuid)
+returns boolean language sql stable security definer as $$
+  select exists (select 1 from comisiones where lider_id = p_uid);
+$$;
+
 -- ¿Dos usuarios comparten al menos un comando? Se usa en usuarios_select
 -- para que el Directorio pueda resolver nombres de compañeros de comando
 -- sin que la política de "usuarios" tenga que leer "membresias" en línea
@@ -111,6 +120,9 @@ alter table enlaces       enable row level security;
 alter table configuracion   enable row level security;
 alter table auditoria       enable row level security;
 alter table tarea_asignados enable row level security;
+alter table foro_temas       enable row level security;
+alter table foro_comentarios enable row level security;
+alter table foro_votos       enable row level security;
 
 -- ---------------------------------------------------------------------
 -- QUITAR POLÍTICAS ANTERIORES (hace que este archivo se pueda volver a
@@ -143,6 +155,16 @@ drop policy if exists enlaces_insert          on enlaces;
 drop policy if exists configuracion_select    on configuracion;
 drop policy if exists configuracion_write     on configuracion;
 drop policy if exists auditoria_select        on auditoria;
+drop policy if exists foro_temas_select       on foro_temas;
+drop policy if exists foro_temas_insert       on foro_temas;
+drop policy if exists foro_temas_update       on foro_temas;
+drop policy if exists foro_temas_delete       on foro_temas;
+drop policy if exists foro_comentarios_select on foro_comentarios;
+drop policy if exists foro_comentarios_insert on foro_comentarios;
+drop policy if exists foro_comentarios_delete on foro_comentarios;
+drop policy if exists foro_votos_select       on foro_votos;
+drop policy if exists foro_votos_insert       on foro_votos;
+drop policy if exists foro_votos_delete       on foro_votos;
 
 -- ---------------------------------------------------------------------
 -- USUARIOS
@@ -382,6 +404,49 @@ create policy configuracion_write on configuracion for all using (
 ) with check (
   fn_es_direccion(auth.uid())
 );
+
+-- ---------------------------------------------------------------------
+-- FORO — el espacio más abierto del sistema, a propósito. Cualquiera
+-- autenticado (incluido Colaborador, que todavía no se enlistó en
+-- ningún comando) puede abrir temas, comentar y apoyar propuestas: la
+-- idea es que cualquiera pueda traer un problema concreto a debate sin
+-- pedir permiso de estructura primero. Lo único con más control es
+-- CERRAR un tema con conclusión/ruta de acción — eso lo puede hacer el
+-- autor del tema, Dirección, o cualquier Líder (fn_es_lider_de_alguna),
+-- para que la síntesis final tenga algo de curaduría y no cualquiera
+-- pueda "cerrar" la idea de otra persona a mitad de debate.
+-- ---------------------------------------------------------------------
+create policy foro_temas_select on foro_temas for select using (auth.uid() is not null);
+
+create policy foro_temas_insert on foro_temas for insert with check (
+  auth.uid() is not null and autor_id = auth.uid()
+);
+
+create policy foro_temas_update on foro_temas for update using (
+  autor_id = auth.uid() or fn_es_direccion(auth.uid()) or fn_es_lider_de_alguna(auth.uid())
+) with check (
+  autor_id = auth.uid() or fn_es_direccion(auth.uid()) or fn_es_lider_de_alguna(auth.uid())
+);
+
+create policy foro_temas_delete on foro_temas for delete using (
+  autor_id = auth.uid() or fn_es_direccion(auth.uid())
+);
+
+create policy foro_comentarios_select on foro_comentarios for select using (auth.uid() is not null);
+
+create policy foro_comentarios_insert on foro_comentarios for insert with check (
+  auth.uid() is not null and autor_id = auth.uid()
+);
+
+create policy foro_comentarios_delete on foro_comentarios for delete using (
+  autor_id = auth.uid() or fn_es_direccion(auth.uid())
+);
+
+create policy foro_votos_select on foro_votos for select using (auth.uid() is not null);
+
+create policy foro_votos_insert on foro_votos for insert with check (usuario_id = auth.uid());
+
+create policy foro_votos_delete on foro_votos for delete using (usuario_id = auth.uid());
 
 -- ---------------------------------------------------------------------
 -- AUDITORÍA — solo lectura, y solo Dirección. Se llena por trigger

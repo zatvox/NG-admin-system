@@ -93,20 +93,57 @@
     });
   };
 
+  // (2026-07-26) Antes este modal no guardaba nada de verdad (no tenía
+  // onSave: "comando" era texto libre sin forma de resolver un comando_id
+  // real, así que SIEMPRE mostraba el toast de "falta implementar la base
+  // de datos", sin importar si Supabase estaba conectado o no). Se
+  // resuelve con el mismo truco que "+ Nueva tarea" dentro de un comando:
+  // en vez de un selector dependiente (comisión → comando, que el motor
+  // de modales actual no soporta re-renderizar), se arma UN SOLO select
+  // de "comando" con todos los comandos de las comisiones visibles para
+  // esta persona, ya con la comisión en la etiqueta para que no haya
+  // ambigüedad (ej. "Eventos — Reunión 6 de Agosto").
   global.NG_openNuevaTareaModalGlobal = function (persona, comisionesVisibles) {
+    var opcionesComando = [];
+    (comisionesVisibles || []).forEach(function (c) {
+      (c.subgrupos || []).forEach(function (s) {
+        opcionesComando.push({ value: s.id, label: c.nombre + " — " + s.nombre, comisionId: c.id });
+      });
+    });
+
+    var vistos = {}; var opcionesAsignado = [];
+    (comisionesVisibles || []).forEach(function (c) {
+      (c.subgrupos || []).forEach(function (s) {
+        (s.miembrosConId || []).forEach(function (m) {
+          if (!vistos[m.id]) { vistos[m.id] = true; opcionesAsignado.push(m); }
+        });
+      });
+    });
+    opcionesAsignado.sort(function (a, b) { return a.nombre.localeCompare(b.nombre); });
+
     global.NG_MODAL.openForm({
       title: "Nueva tarea",
       entityLabel: "Tarea",
       fields: [
         { name: "titulo", label: "Título de la tarea", type: "text", required: true, placeholder: "Ej. Contactar interesados pendientes" },
-        { name: "comision", label: "Comisión", type: "select", required: true, options: comisionesVisibles.map(function (c) { return { value: c.id, label: c.nombre }; }) },
-        { name: "comando", label: "Comando operativo", type: "text", required: true, placeholder: "Nombre exacto del comando dentro de la comisión", hint: "En la versión final este campo será un selector dependiente de la comisión elegida." },
-        { name: "asignadoId", label: "Asignado a", type: "text", required: true, placeholder: "Nombre de la persona" },
+        { name: "descripcion", label: "Descripción (opcional)", type: "textarea", placeholder: "Detalles adicionales de la tarea…" },
+        {
+          name: "comando", label: "Comando operativo", type: "select", required: true,
+          options: opcionesComando,
+          hint: opcionesComando.length ? "" : "Todavía no hay comandos operativos en tu comisión."
+        },
+        {
+          name: "asignados", label: "Asignado a (puedes elegir varias personas)", type: "userpicker", required: false,
+          options: opcionesAsignado.map(function (m) { return { value: m.id, label: m.nombre }; }),
+          placeholder: "Escribe un nombre para filtrar…",
+          hint: opcionesAsignado.length
+            ? "Escribe para filtrar por nombre completo. Marca una o más personas."
+            : 'Todavía nadie se unió a ningún comando de estas comisiones.'
+        },
         { name: "fecha", label: "Fecha límite", type: "date", required: true, value: isoDate(TODAY()) },
         { name: "estado", label: "Estado inicial", type: "select", options: ESTADO_OPTIONS, value: "pendiente" }
-      ]
-      // Sin onSave: requiere resolver primero el comando_id real a partir del nombre
-      // escrito (ver hint del campo) — se habilita cuando el selector dependiente esté listo.
+      ],
+      onSave: function (v) { return global.NG_DATA.comisiones.crearTarea(v.comando, v); }
     });
   };
 
@@ -147,6 +184,50 @@
         { name: "alcance", label: "Comisión", type: "select", options: scopeSelectOptions(persona, comisiones) }
       ],
       onSave: function (v) { return global.NG_DATA.enlaces.crear(v); }
+    });
+  };
+
+  // Foro de Ideas — abierto a cualquier persona autenticada, sin filtrar
+  // por rol (ver rls-policies.sql: foro_temas_insert solo exige estar
+  // logueado). "comisionId" es opcional: sirve para relacionar el tema
+  // con una comisión afín, no para restringir quién puede verlo o entrar.
+  global.NG_openNuevoTemaForoModal = function (persona, comisiones) {
+    var opcionesComision = [{ value: "", label: "Ninguna — tema general" }].concat(
+      (comisiones || []).map(function (c) { return { value: c.id, label: c.nombre }; })
+    );
+    global.NG_MODAL.openForm({
+      title: "Nuevo tema en el Foro",
+      subtitle: "Plantea un problema concreto de la sociedad para buscarle una solución entre todos.",
+      entityLabel: "Tema",
+      fields: [
+        { name: "titulo", label: "Título del tema", type: "text", required: true, placeholder: "Ej. Poca participación juvenil en cabildos abiertos" },
+        {
+          name: "problema", label: "¿Cuál es el problema específico?", type: "textarea", required: true,
+          placeholder: "Describe el problema concreto — el hecho, sin etiqueta ideológica. Ej. \"Solo el 12% de los cabildos de este año tuvo asistentes menores de 30 años.\""
+        },
+        { name: "comisionId", label: "¿Se relaciona con alguna comisión? (opcional)", type: "select", options: opcionesComision }
+      ],
+      onSave: function (v) { return global.NG_DATA.foro.crearTema(v); }
+    });
+  };
+
+  // Cerrar un tema con conclusión + ruta de acción — quién puede hacerlo
+  // se decide server-side (foro_temas_update: autor del tema, Dirección o
+  // cualquier Líder), este modal no filtra nada, solo se ofrece cuando
+  // views/foro.js ya calculó que la persona puede.
+  // (2026-07-27) Ya no necesita un callback "onDone" para refrescar la
+  // vista: ui/modal.js re-dispara la ruta actual automáticamente después
+  // de cualquier onSave exitoso.
+  global.NG_openCerrarTemaForoModal = function (tema) {
+    global.NG_MODAL.openForm({
+      title: "Cerrar con conclusión",
+      subtitle: tema.titulo,
+      entityLabel: "Conclusión",
+      fields: [
+        { name: "conclusion", label: "¿A qué conclusión llegó el debate?", type: "textarea", required: true, placeholder: "Resume el acuerdo al que llegó la mayoría…" },
+        { name: "rutaAccion", label: "Ruta de acción (qué se va a hacer, quién y cuándo)", type: "textarea", required: true, placeholder: "Pasos concretos para resolver el problema…" }
+      ],
+      onSave: function (v) { return global.NG_DATA.foro.cerrarConConclusion(tema.id, v.conclusion, v.rutaAccion); }
     });
   };
 })(window);

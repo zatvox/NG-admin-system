@@ -11,7 +11,7 @@
   // archivo solo hace el despacho de rutas.
   var VH = window.NG_VIEW_HELPERS;
 
-  var ROUTES_PROTEGIDAS = ["dashboard","comisiones","tareas","calendario","directorio","comunicaciones","enlaces","reportes","perfil","configuracion"];
+  var ROUTES_PROTEGIDAS = ["dashboard","comisiones","tareas","calendario","directorio","comunicaciones","enlaces","foro","reportes","perfil","configuracion"];
 
   function route() {
     var hash = location.hash.replace("#/", "");
@@ -20,6 +20,8 @@
     var persona = window.NG_STATE.persona;
 
     window.NG_renderNav();
+    if (window.NG_resetSearchIndex) window.NG_resetSearchIndex();
+    if (window.NG_refreshNotifBadge) window.NG_refreshNotifBadge();
 
     if (!window.NG_PERMS.canAccess(r, persona) && ROUTES_PROTEGIDAS.indexOf(r) >= 0) {
       VH.setTitle("Sin acceso");
@@ -40,6 +42,8 @@
     else if (r === "directorio") run = V.directorio();
     else if (r === "comunicaciones") run = V.comunicaciones();
     else if (r === "enlaces") run = V.enlaces();
+    else if (r === "foro" && !parts[1]) run = V.foro();
+    else if (r === "foro" && parts[1]) run = V.foroDetalle(parts[1]);
     else if (r === "reportes") run = V.reportes();
     else if (r === "perfil") run = V.perfil();
     else if (r === "configuracion") run = V.configuracion();

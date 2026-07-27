@@ -41,6 +41,10 @@ do $$ begin
   create type estado_usuario as enum ('activo','pendiente_activacion','suspendido');
 exception when duplicate_object then null; end $$;
 
+do $$ begin
+  create type estado_tema_foro as enum ('abierto','en_debate','con_conclusion','cerrado');
+exception when duplicate_object then null; end $$;
+
 -- ---------------------------------------------------------------------
 -- 1. USUARIOS — extiende auth.users (Supabase Auth) con datos de perfil.
 --    El id ES el mismo id de auth.users: 1 fila por cuenta autenticada.
@@ -189,6 +193,50 @@ create table if not exists enlaces (
   created_at   timestamptz not null default now()
 );
 create index if not exists idx_enlaces_comision on enlaces(comision_id);
+
+-- ---------------------------------------------------------------------
+-- 8.1 FORO — espacio de debate abierto, sin etiqueta de comisión ni de
+--     línea política. Un tema plantea UN problema concreto de la
+--     sociedad; el hilo de comentarios busca converger en una
+--     "conclusion" + "ruta_accion" (qué se va a hacer, no solo opinar).
+--     Cualquier persona autenticada (incluido Colaborador) puede abrir
+--     temas y comentar — es intencionalmente el espacio más abierto del
+--     sistema. Cerrar con conclusión sí está más controlado (ver
+--     rls-policies.sql): autor del tema, Dirección o cualquier Líder.
+-- ---------------------------------------------------------------------
+create table if not exists foro_temas (
+  id           uuid primary key default gen_random_uuid(),
+  titulo       text not null,
+  problema     text not null, -- el problema social concreto que el tema busca resolver
+  autor_id     uuid references usuarios(id) on delete set null,
+  comision_id  uuid references comisiones(id) on delete set null, -- opcional: liga el tema a una comisión afín
+  estado       estado_tema_foro not null default 'abierto',
+  conclusion   text, -- se llena cuando el debate converge en un acuerdo
+  ruta_accion  text, -- pasos concretos para resolverlo: qué, quién, cuándo
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+comment on table foro_temas is 'Temas de debate del Foro de Ideas. estado avanza abierto -> en_debate (automático al primer comentario) -> con_conclusion (manual, con conclusion+ruta_accion).';
+create index if not exists idx_foro_temas_comision on foro_temas(comision_id);
+create index if not exists idx_foro_temas_estado on foro_temas(estado);
+
+create table if not exists foro_comentarios (
+  id            uuid primary key default gen_random_uuid(),
+  tema_id       uuid not null references foro_temas(id) on delete cascade,
+  autor_id      uuid references usuarios(id) on delete set null,
+  cuerpo        text not null,
+  es_propuesta  boolean not null default false, -- marca el comentario como "propuesta de solución concreta" (se resalta distinto en la UI)
+  created_at    timestamptz not null default now()
+);
+create index if not exists idx_foro_comentarios_tema on foro_comentarios(tema_id);
+
+create table if not exists foro_votos (
+  comentario_id  uuid not null references foro_comentarios(id) on delete cascade,
+  usuario_id     uuid not null references usuarios(id) on delete cascade,
+  created_at     timestamptz not null default now(),
+  primary key (comentario_id, usuario_id)
+);
+comment on table foro_votos is '"Apoyo" a un comentario/propuesta puntual — mide qué tanto consenso junta cada idea dentro del hilo.';
 
 -- ---------------------------------------------------------------------
 -- 9. CONFIGURACION — parámetros de negocio editables por Dirección desde

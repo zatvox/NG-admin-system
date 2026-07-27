@@ -137,6 +137,15 @@
           .then(function () {
             closeModal();
             global.NG_TOAST.show((cfg.entityLabel || "Elemento") + " creado correctamente.", "success");
+            // (2026-07-27) Antes había que salir de la vista y volver para
+            // que apareciera lo recién creado — cada view* vuelve a pedir
+            // los datos frescos (NG_DATA.*.listar()) cada vez que corre, así
+            // que basta con re-disparar la ruta actual (sin cambiar el hash)
+            // para que TODO formulario creado por este modal (tarea, comando,
+            // evento, comunicado, enlace, tema del foro, etc.) se vea sin
+            // recargar la página a mano. Un solo arreglo central en vez de
+            // repetirlo en cada modal-openers.js.
+            if (global.NG_ROUTER) global.NG_ROUTER.route();
           })
           .catch(function (err) {
             saveBtn.disabled = false; saveBtn.textContent = "Guardar";
