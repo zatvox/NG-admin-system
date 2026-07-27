@@ -35,6 +35,23 @@
     return data;
   }
 
+  async function actualizarEnlace(id, payload) {
+    if (!db) return null;
+    var { error } = await db.from("enlaces").update({
+      nombre: payload.nombre,
+      url: payload.url,
+      descripcion: payload.descripcion || null,
+      comision_id: payload.alcance || null
+    }).eq("id", id);
+    if (error) throw error;
+  }
+
+  async function eliminarEnlace(id) {
+    if (!db) return null;
+    var { error } = await db.from("enlaces").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   global.NG_DATA = global.NG_DATA || {};
-  global.NG_DATA.enlaces = { listar: listarEnlaces, crear: crearEnlace };
+  global.NG_DATA.enlaces = { listar: listarEnlaces, crear: crearEnlace, actualizar: actualizarEnlace, eliminar: eliminarEnlace };
 })(window);

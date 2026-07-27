@@ -66,14 +66,14 @@
     }
 
     if (usuario.es_direccion) {
-      return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: "direccion", comisionId: null, subgrupoId: null };
+      return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, rol: "direccion", comisionId: null, subgrupoId: null };
     }
 
     // ¿Es Líder de alguna comisión?
     var { data: liderDe, error: e2 } = await db.from("comisiones").select("id").eq("lider_id", usuario.id).limit(1);
     if (e2) throw new Error("No se pudo verificar tu comisión (" + e2.message + ").");
     if (liderDe && liderDe.length) {
-      return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: "lider", comisionId: liderDe[0].id, subgrupoId: null };
+      return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, rol: "lider", comisionId: liderDe[0].id, subgrupoId: null };
     }
 
     // ¿Tiene alguna membresía (coordinador/secretario/miembro)? Se separa en
@@ -89,13 +89,13 @@
       if (e4) throw new Error("No se pudo verificar tu comisión (" + e4.message + ").");
       var rol = (membresia.rol === "secretario") ? "coordinador" : membresia.rol; // secretario hereda permisos de coordinador
       return {
-        id: usuario.id, nombre: usuario.nombre, email: usuario.email,
+        id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono,
         rol: rol, comisionId: comando ? comando.comision_id : null, subgrupoId: membresia.comando_id
       };
     }
 
     // Sin comisión asignada todavía = Colaborador (spec secc. 3).
-    return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: "colaborador", comisionId: null, subgrupoId: null };
+    return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, rol: "colaborador", comisionId: null, subgrupoId: null };
   }
 
   async function realLogin(email, password) {

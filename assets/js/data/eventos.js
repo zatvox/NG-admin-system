@@ -29,6 +29,23 @@
     return data;
   }
 
+  async function actualizarEvento(id, payload) {
+    if (!db) return null;
+    var { error } = await db.from("eventos").update({
+      titulo: payload.titulo,
+      fecha: payload.fecha,
+      alcance: payload.alcance ? "comision" : "general",
+      comision_id: payload.alcance || null
+    }).eq("id", id);
+    if (error) throw error;
+  }
+
+  async function eliminarEvento(id) {
+    if (!db) return null;
+    var { error } = await db.from("eventos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   global.NG_DATA = global.NG_DATA || {};
-  global.NG_DATA.eventos = { listar: listarEventos, crear: crearEvento };
+  global.NG_DATA.eventos = { listar: listarEventos, crear: crearEvento, actualizar: actualizarEvento, eliminar: eliminarEvento };
 })(window);

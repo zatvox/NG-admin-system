@@ -66,9 +66,16 @@
         // — mismo criterio de "contiene", insensible a mayúsculas).
         input = el("div", { class: "userpicker" });
         var seleccionados = {}; // usuario_id -> nombre, para poder mostrar un resumen
+        var opciones = f.options || [];
+        // f.value puede traer un array de ids ya seleccionados (editar una
+        // tarea existente, por ejemplo) — se precargan antes de pintar la
+        // lista para que aparezcan marcados desde el primer render.
+        (f.value || []).forEach(function (uid) {
+          var opt = opciones.filter(function (o) { return o.value === uid; })[0];
+          if (opt) seleccionados[uid] = opt.label;
+        });
         var searchBox = el("input", { type: "text", placeholder: f.placeholder || "Escribe un nombre para filtrar…" });
         var listBox = el("div", { class: "userpicker-list" });
-        var opciones = f.options || [];
 
         function renderLista(filtro) {
           listBox.innerHTML = "";

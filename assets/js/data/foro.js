@@ -131,6 +131,37 @@
     if (error) throw error;
   }
 
+  // (2026-07-27) Editar/eliminar un tema — espejo de foro_temas_update/delete.
+  // Solo título y problema son editables aquí; el estado/conclusión se maneja
+  // aparte con marcarEnDebate()/cerrarConConclusion().
+  async function actualizarTema(temaId, payload) {
+    if (!db) return null;
+    var { error } = await db.from("foro_temas").update({
+      titulo: payload.titulo, problema: payload.problema
+    }).eq("id", temaId);
+    if (error) throw error;
+  }
+
+  async function eliminarTema(temaId) {
+    if (!db) return null;
+    var { error } = await db.from("foro_temas").delete().eq("id", temaId);
+    if (error) throw error;
+  }
+
+  // Editar/eliminar un comentario propio — espejo de foro_comentarios_update
+  // (nueva)/foro_comentarios_delete (autor del comentario o Dirección).
+  async function editarComentario(comentarioId, nuevoCuerpo) {
+    if (!db) return null;
+    var { error } = await db.from("foro_comentarios").update({ cuerpo: nuevoCuerpo }).eq("id", comentarioId);
+    if (error) throw error;
+  }
+
+  async function eliminarComentario(comentarioId) {
+    if (!db) return null;
+    var { error } = await db.from("foro_comentarios").delete().eq("id", comentarioId);
+    if (error) throw error;
+  }
+
   global.NG_DATA = global.NG_DATA || {};
   global.NG_DATA.foro = {
     ESTADOS_LABEL: ESTADOS_LABEL,
@@ -142,6 +173,10 @@
     votar: votar,
     quitarVoto: quitarVoto,
     marcarEnDebate: marcarEnDebate,
-    cerrarConConclusion: cerrarConConclusion
+    cerrarConConclusion: cerrarConConclusion,
+    actualizarTema: actualizarTema,
+    eliminarTema: eliminarTema,
+    editarComentario: editarComentario,
+    eliminarComentario: eliminarComentario
   };
 })(window);

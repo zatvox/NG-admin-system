@@ -69,9 +69,40 @@
   }
   function kpi(num, label) { return el("div", { class: "kpi" }, [el("div", { class: "stat-num mono" }, [String(num)]), el("div", { class: "stat-lbl" }, [label])]); }
 
-  function comisionCard(c) {
+  // Menú "⋮" reutilizable para las tarjetas de comisión/comando: se abre
+  // con clic normal (no clic derecho — en móvil no existe, y ahí también
+  // tiene que funcionar), con stopPropagation para no disparar el click de
+  // la tarjeta completa (que navega al detalle). Reusa los mismos estilos
+  // .topbar-dropdown/.topbar-panel/.topbar-panel-item del topbar (app.css)
+  // para no duplicar CSS de "panel flotante".
+  function kebabMenu(items) {
+    var wrap = el("div", { class: "topbar-dropdown card-kebab", style: "position:absolute;top:10px;right:10px;" });
+    var btn = el("button", { type: "button", class: "icon-btn-sm", "aria-label": "Más acciones", title: "Más acciones" }, ["⋮"]);
+    var panel = el("div", { class: "topbar-panel" });
+    items.forEach(function (it) {
+      var row = el("div", { class: "topbar-panel-item" }, [it.label]);
+      row.addEventListener("click", function (e) { e.stopPropagation(); panel.classList.remove("open"); it.onClick(); });
+      panel.appendChild(row);
+    });
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var abriendo = !panel.classList.contains("open");
+      global.NG_DOM.qa(".card-kebab .topbar-panel.open").forEach(function (p) { p.classList.remove("open"); });
+      if (abriendo) panel.classList.add("open");
+    });
+    wrap.appendChild(btn); wrap.appendChild(panel);
+    wrap.addEventListener("click", function (e) { e.stopPropagation(); });
+    return wrap;
+  }
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest(".card-kebab")) {
+      global.NG_DOM.qa(".card-kebab .topbar-panel.open").forEach(function (p) { p.classList.remove("open"); });
+    }
+  });
+
+  function comisionCard(c, persona) {
     var abiertas = sum(c.subgrupos.map(function (s) { return s.tareas.filter(function (t) { return t.estado !== "hecho"; }).length; }));
-    var card = el("div", { class: "card card-clickable comision-card", style: "--c:" + c.color }, [
+    var card = el("div", { class: "card card-clickable comision-card", style: "--c:" + c.color + ";position:relative;" }, [
       el("div", { class: "comision-head" }, [el("div", { class: "comision-name" }, [c.nombre])]),
       el("div", { class: "comision-lead" }, ["Líder: " + (c.lider || "—")]),
       el("div", { class: "comision-stats" }, [
@@ -80,6 +111,9 @@
       ])
     ]);
     card.addEventListener("click", function () { location.hash = "#/comisiones/" + c.id; });
+    if (persona && global.NG_PERMS.canManageComision(persona, c.id)) {
+      card.appendChild(kebabMenu([{ label: "Editar comisión", onClick: function () { global.NG_openEditarComisionModal(c); } }]));
+    }
     return card;
   }
 
@@ -95,7 +129,11 @@
     // auto-enlistamiento (paso 1 = entrar a la comisión desde "Comisiones"
     // / botón "Enlistarse"), y no importa si ya pertenece a otra comisión.
     var puedeUnirse = !allowed && persona.rol !== "direccion" && persona.rol !== "lider";
-    var card = el("div", { class: "card" + (allowed ? " card-clickable" : ""), style: (allowed || puedeUnirse) ? "" : "opacity:.6;" }, [
+    // Editar el REGISTRO del comando desde el cuadrito (mismo alcance que
+    // el botón "Editar comando" del detalle: Dirección o Líder de la
+    // comisión, no Coordinador — ver dashboard-comisiones.js).
+    var canEditComando = global.NG_PERMS.canManageComision(persona, c.id);
+    var card = el("div", { class: "card" + (allowed ? " card-clickable" : ""), style: (allowed || puedeUnirse) ? "position:relative;" : "opacity:.6;position:relative;" }, [
       el("div", { class: "comision-name", style: "font-size:14px;margin-bottom:6px;" }, [s.nombre]),
       el("div", { class: "comision-lead" }, ["Coordinador/a: " + s.coordinador]),
       el("div", { class: "comision-stats" }, [
@@ -124,6 +162,9 @@
     } else {
       card.appendChild(el("div", { style: "font-size:10.5px;color:var(--text-faint);margin-top:10px;font-family:'IBM Plex Mono',monospace;" }, ["Fuera de tu comisión"]));
     }
+    if (canEditComando) {
+      card.appendChild(kebabMenu([{ label: "Editar comando", onClick: function () { global.NG_openEditarComandoModal(s, c); } }]));
+    }
     return card;
   }
 
@@ -143,26 +184,48 @@
     return wrap;
   }
 
-  function eventListSection(eventos, comisiones) {
+  function eventListSection(eventos, comisiones, persona) {
     var wrap = el("div", { class: "cal-list" });
     if (!eventos.length) { wrap.appendChild(el("div", { class: "empty-state" }, ["No hay eventos próximos."])); return wrap; }
     eventos.slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; }).forEach(function (e) {
       var c = e.comisionId ? comisiones.filter(function (x) { return x.id === e.comisionId; })[0] : null;
-      wrap.appendChild(el("div", { class: "cal-list-item" }, [
-        el("div", { class: "cal-list-date" }, [U.fmtFecha(e.fecha)]),
-        el("div", {}, [
-          el("div", { style: "font-weight:600;font-size:13.5px;color:var(--ink);" }, [e.titulo]),
-          el("div", { style: "font-size:11.5px;color:var(--text-faint);margin-top:2px;" }, [c ? c.nombre : "Toda la organización"])
+      var item = el("div", { class: "cal-list-item", style: "display:flex;justify-content:space-between;align-items:center;gap:10px;" }, [
+        el("div", { style: "display:flex;gap:12px;align-items:center;" }, [
+          el("div", { class: "cal-list-date" }, [U.fmtFecha(e.fecha)]),
+          el("div", {}, [
+            el("div", { style: "font-weight:600;font-size:13.5px;color:var(--ink);" }, [e.titulo]),
+            el("div", { style: "font-size:11.5px;color:var(--text-faint);margin-top:2px;" }, [c ? c.nombre : "Toda la organización"])
+          ])
         ])
-      ]));
+      ]);
+      if (persona && global.NG_PERMS.canManageEnlaceOEvento(persona, e)) {
+        item.appendChild(gestionRow(
+          function () { global.NG_openEditarEventoModal(e, persona, comisiones); },
+          function () {
+            if (!window.confirm('¿Eliminar el evento "' + e.titulo + '"?')) return;
+            global.NG_DATA.eventos.eliminar(e.id)
+              .then(function () { global.NG_TOAST.show("Evento eliminado.", "success"); global.NG_ROUTER.route(); })
+              .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+          }
+        ));
+      }
+      wrap.appendChild(item);
     });
     return wrap;
   }
 
-  function taskCard(t, ctx, persona, onChange) {
+  // onEdit(t): callback opcional que arma y abre el modal de edición (lo
+  // define quien llama a kanbanBoard, porque necesita el objeto comisión
+  // completo para recalcular la lista de asignados posibles — ver
+  // NG_openEditarTareaModal en modal-openers.js). Solo se ofrece a quien
+  // puede administrar el comando (canManageSubgrupo: Dirección, Líder de
+  // la comisión, Coordinador de ESE comando) — un Miembro asignado sigue
+  // limitado a cambiar el estado, nunca reescribir o borrar la tarea.
+  function taskCard(t, ctx, persona, onChange, onEdit) {
     var comisionId = ctx ? ctx.comisionId : t.comisionId;
     var subgrupoId = ctx ? ctx.subgrupoId : t.subgrupoId;
     var editable = global.NG_PERMS.canEditTask(persona, t, comisionId, subgrupoId);
+    var canManage = global.NG_PERMS.canManageSubgrupo(persona, comisionId, subgrupoId);
     // Color de la comisión dueña de la tarea, para el borde izquierdo del
     // cubito (mismo patrón --c que post-card/comisionCard). En la vista
     // global de Tareas ya viene en t.comisionColor (armado por allTareas);
@@ -171,11 +234,34 @@
     // viewSubgrupoDetalle en dashboard-comisiones.js).
     var comisionColor = t.comisionColor || (ctx && ctx.comisionColor) || null;
 
+    var titleRow = el("div", { class: "task-title-row", style: "display:flex;justify-content:space-between;align-items:flex-start;gap:6px;" }, [
+      el("div", { class: "task-title" }, [t.titulo])
+    ]);
     var card = el("div", { class: "task-card" }, [
-      el("div", { class: "task-title" }, [t.titulo]),
+      titleRow,
       el("div", { class: "task-meta" }, [el("span", {}, [(t.asignadosNombres || "Sin asignar") + " · " + U.fmtFecha(t.fecha)])])
     ]);
     if (comisionColor) card.style.setProperty("--c", comisionColor);
+
+    if (canManage && typeof onEdit === "function") {
+      var actions = el("div", { class: "task-card-actions", style: "display:flex;gap:4px;flex-shrink:0;" });
+      var editBtn = el("button", { type: "button", class: "icon-btn-sm", title: "Editar tarea", "aria-label": "Editar tarea" }, ["✎"]);
+      editBtn.addEventListener("click", function (e) { e.stopPropagation(); onEdit(t); });
+      var delBtn = el("button", { type: "button", class: "icon-btn-sm", title: "Eliminar tarea", "aria-label": "Eliminar tarea" }, ["✕"]);
+      delBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (!window.confirm('¿Eliminar la tarea "' + t.titulo + '"? Esta acción no se puede deshacer.')) return;
+        global.NG_DATA.comisiones.eliminarTarea(t.id)
+          .then(function () {
+            global.NG_TOAST.show("Tarea eliminada.", "success");
+            if (typeof onChange === "function") onChange(); else global.NG_ROUTER.route();
+          })
+          .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+      });
+      actions.appendChild(editBtn); actions.appendChild(delBtn);
+      titleRow.appendChild(actions);
+    }
+
     if (!editable) {
       card.querySelector(".task-meta").appendChild(el("span", { class: "badge-estado badge-" + t.estado }, [ESTADO_LABEL[t.estado]]));
       return card;
@@ -198,30 +284,45 @@
     return card;
   }
 
-  function kanbanBoard(tareas, ctx, persona, onChange) {
+  function kanbanBoard(tareas, ctx, persona, onChange, onEdit) {
     var cols = [{ key: "pendiente", label: "Pendiente" }, { key: "en_curso", label: "En curso" }, { key: "hecho", label: "Hecho" }];
     var board = el("div", { class: "kanban" });
     cols.forEach(function (col) {
       var items = tareas.filter(function (t) { return t.estado === col.key; });
       var colEl = el("div", { class: "kanban-col" }, [el("h3", {}, [col.label, el("span", { class: "mono" }, [String(items.length)])])]);
       if (!items.length) colEl.appendChild(el("div", { style: "font-size:11.5px;color:var(--text-faint);padding:6px;" }, ["Sin tareas"]));
-      items.forEach(function (t) { colEl.appendChild(taskCard(t, ctx, persona, onChange)); });
+      items.forEach(function (t) { colEl.appendChild(taskCard(t, ctx, persona, onChange, onEdit)); });
       board.appendChild(colEl);
     });
     return board;
   }
 
-  function comunicadoCard(p, comisiones) {
+  // "persona" es opcional (compat con llamadas viejas que no lo pasaban);
+  // sin él, la tarjeta se ve igual que antes, solo sin botones de editar/
+  // eliminar — así ninguna vista existente se rompe si todavía no fue
+  // actualizada para pasarlo.
+  function comunicadoCard(p, comisiones, persona) {
     var c = p.comisionId ? comisiones.filter(function (x) { return x.id === p.comisionId; })[0] : null;
     var card = el("div", { class: "card post-card" });
     card.style.setProperty("--c", c ? c.color : "var(--accent)");
     card.appendChild(el("div", { class: "post-head" }, [el("div", { class: "post-title" }, [p.titulo]), el("span", { class: "chip" }, [c ? c.nombre : "General"])]));
     card.appendChild(el("div", { class: "post-meta" }, [(p.autor || "—") + " · " + U.fmtFecha(p.fecha)]));
     card.appendChild(el("div", { class: "post-body" }, [p.cuerpo]));
+    if (persona && global.NG_PERMS.canManageComunicado(persona, p)) {
+      card.appendChild(gestionRow(
+        function () { global.NG_openEditarComunicadoModal(p, persona, comisiones); },
+        function () {
+          if (!window.confirm('¿Eliminar el comunicado "' + p.titulo + '"?')) return;
+          global.NG_DATA.comunicados.eliminar(p.id)
+            .then(function () { global.NG_TOAST.show("Comunicado eliminado.", "success"); global.NG_ROUTER.route(); })
+            .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+        }
+      ));
+    }
     return card;
   }
 
-  function enlaceCard(l, comisiones) {
+  function enlaceCard(l, comisiones, persona) {
     var c = l.comisionId ? comisiones.filter(function (x) { return x.id === l.comisionId; })[0] : null;
     var card = el("div", { class: "card post-card" });
     card.style.setProperty("--c", c ? c.color : "var(--accent)");
@@ -230,7 +331,31 @@
     card.appendChild(el("div", { class: "post-body" }, [l.descripcion || ""]));
     var a = el("a", { href: l.url, target: "_blank", rel: "noopener noreferrer", class: "btn btn-ghost", style: "margin-top:12px;font-size:12.5px;padding:7px 12px;" }, ["Abrir enlace ↗"]);
     card.appendChild(a);
+    if (persona && global.NG_PERMS.canManageEnlaceOEvento(persona, l)) {
+      card.appendChild(gestionRow(
+        function () { global.NG_openEditarEnlaceModal(l, persona, comisiones); },
+        function () {
+          if (!window.confirm('¿Eliminar el enlace "' + l.nombre + '"?')) return;
+          global.NG_DATA.enlaces.eliminar(l.id)
+            .then(function () { global.NG_TOAST.show("Enlace eliminado.", "success"); global.NG_ROUTER.route(); })
+            .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+        }
+      ));
+    }
     return card;
+  }
+
+  // Fila compacta "Editar / Eliminar" reutilizada por comunicadoCard,
+  // enlaceCard y eventListSection — evita repetir el mismo par de botones
+  // ghost 3 veces con estilos ligeramente distintos.
+  function gestionRow(onEdit, onDelete) {
+    var row = el("div", { style: "display:flex;gap:8px;margin-top:10px;" });
+    var editBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;" }, ["Editar"]);
+    editBtn.addEventListener("click", onEdit);
+    var delBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;color:var(--danger);" }, ["Eliminar"]);
+    delBtn.addEventListener("click", onDelete);
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    return row;
   }
 
   function rowKV(k, v) { return el("div", { class: "toggle-row" }, [el("span", { style: "color:var(--text-soft);" }, [k]), el("span", { style: "font-weight:600;color:var(--ink);" }, [v])]); }
@@ -243,6 +368,7 @@
     taskListSection: taskListSection, eventListSection: eventListSection,
     taskCard: taskCard, kanbanBoard: kanbanBoard,
     comunicadoCard: comunicadoCard, enlaceCard: enlaceCard,
-    rowKV: rowKV, actionBtn: actionBtn
+    rowKV: rowKV, actionBtn: actionBtn,
+    kebabMenu: kebabMenu, gestionRow: gestionRow
   };
 })(window);

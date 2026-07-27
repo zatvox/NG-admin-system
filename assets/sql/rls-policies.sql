@@ -140,18 +140,26 @@ drop policy if exists comandos_insert         on comandos;
 drop policy if exists comandos_update         on comandos;
 drop policy if exists membresias_select       on membresias;
 drop policy if exists membresias_insert       on membresias;
+drop policy if exists membresias_update       on membresias;
 drop policy if exists membresias_delete       on membresias;
 drop policy if exists tareas_select           on tareas;
 drop policy if exists tareas_insert           on tareas;
 drop policy if exists tareas_update           on tareas;
+drop policy if exists tareas_delete           on tareas;
 drop policy if exists tarea_asignados_select  on tarea_asignados;
 drop policy if exists tarea_asignados_write   on tarea_asignados;
 drop policy if exists eventos_select          on eventos;
 drop policy if exists eventos_insert          on eventos;
+drop policy if exists eventos_update          on eventos;
+drop policy if exists eventos_delete          on eventos;
 drop policy if exists comunicados_select      on comunicados;
 drop policy if exists comunicados_insert      on comunicados;
+drop policy if exists comunicados_update      on comunicados;
+drop policy if exists comunicados_delete      on comunicados;
 drop policy if exists enlaces_select          on enlaces;
 drop policy if exists enlaces_insert          on enlaces;
+drop policy if exists enlaces_update          on enlaces;
+drop policy if exists enlaces_delete          on enlaces;
 drop policy if exists configuracion_select    on configuracion;
 drop policy if exists configuracion_write     on configuracion;
 drop policy if exists auditoria_select        on auditoria;
@@ -161,6 +169,7 @@ drop policy if exists foro_temas_update       on foro_temas;
 drop policy if exists foro_temas_delete       on foro_temas;
 drop policy if exists foro_comentarios_select on foro_comentarios;
 drop policy if exists foro_comentarios_insert on foro_comentarios;
+drop policy if exists foro_comentarios_update on foro_comentarios;
 drop policy if exists foro_comentarios_delete on foro_comentarios;
 drop policy if exists foro_votos_select       on foro_votos;
 drop policy if exists foro_votos_insert       on foro_votos;
@@ -253,6 +262,23 @@ create policy membresias_insert on membresias for insert with check (
   or (usuario_id = auth.uid() and rol = 'miembro') -- auto-enlistamiento: cualquier persona autenticada puede sumarse a un comando como Miembro (botón "Enlistarse" / "Unirme a este comando")
 );
 
+-- (2026-07-27) Cambiar el ROL de una membresía ya existente (ej. ascender
+-- a un Miembro a Coordinador/Secretario/a) — antes NO había política de
+-- UPDATE en esta tabla, así que la única forma de asignar un coordinador
+-- era una sentencia SQL manual. Mismo alcance que insert/delete: Dirección,
+-- Líder de la comisión, o Coordinador de ESE MISMO comando (un Coordinador
+-- puede nombrar Secretario/a de apoyo dentro de su propio comando, pero no
+-- tocar membresías de otros comandos).
+create policy membresias_update on membresias for update using (
+  fn_es_direccion(auth.uid())
+  or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
+  or fn_es_coordinador(auth.uid(), comando_id)
+) with check (
+  fn_es_direccion(auth.uid())
+  or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
+  or fn_es_coordinador(auth.uid(), comando_id)
+);
+
 create policy membresias_delete on membresias for delete using (
   fn_es_direccion(auth.uid())
   or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
@@ -273,6 +299,9 @@ create policy membresias_delete on membresias for delete using (
 --      propio comando; Miembro SOLO si la tarea está asignada a él/ella
 --      Y pertenece al comando en el que se enlistó.
 -- Crear: Dirección, Líder, Coordinador (no Miembro, según la UI actual).
+-- Eliminar: Dirección, Líder de la comisión, Coordinador del comando —
+--      un Miembro asignado NUNCA puede borrar la tarea, solo cambiar su
+--      estado (ver tareas_update).
 -- ---------------------------------------------------------------------
 create policy tareas_select on tareas for select using (
   auth.uid() is not null
@@ -284,16 +313,28 @@ create policy tareas_insert on tareas for insert with check (
   or fn_es_coordinador(auth.uid(), comando_id)
 );
 
+-- (2026-07-27) "asignado_id = auth.uid()" quedó DEPRECADO desde que existe
+-- tarea_asignados (multi-asignado, ver schema.sql 5.1) — crearTarea() ya
+-- no escribe esa columna, así que un Miembro asignado por el mecanismo
+-- nuevo nunca cumplía esta condición y, en el borde, podía terminar sin
+-- poder cambiar el estado de su propia tarea. Se reemplaza por un EXISTS
+-- contra tarea_asignados, que es la fuente de verdad real hoy.
 create policy tareas_update on tareas for update using (
   fn_es_direccion(auth.uid())
   or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
   or fn_es_coordinador(auth.uid(), comando_id)
-  or asignado_id = auth.uid()
+  or exists (select 1 from tarea_asignados ta where ta.tarea_id = tareas.id and ta.usuario_id = auth.uid())
 ) with check (
   fn_es_direccion(auth.uid())
   or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
   or fn_es_coordinador(auth.uid(), comando_id)
-  or asignado_id = auth.uid()
+  or exists (select 1 from tarea_asignados ta where ta.tarea_id = tareas.id and ta.usuario_id = auth.uid())
+);
+
+create policy tareas_delete on tareas for delete using (
+  fn_es_direccion(auth.uid())
+  or fn_es_lider(auth.uid(), fn_comision_de_comando(comando_id))
+  or fn_es_coordinador(auth.uid(), comando_id)
 );
 
 -- ---------------------------------------------------------------------
@@ -351,6 +392,37 @@ create policy eventos_insert on eventos for insert with check (
      ))
 );
 
+-- (2026-07-27) update/delete: antes NO EXISTÍAN — un evento publicado por
+-- error se quedaba ahí para siempre. Mismo alcance que insert (quien
+-- podía crearlo, puede corregirlo o borrarlo).
+create policy eventos_update on eventos for update using (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and (
+        fn_es_lider(auth.uid(), comision_id)
+        or exists (select 1 from membresias m join comandos c on c.id = m.comando_id
+                    where m.usuario_id = auth.uid() and c.comision_id = eventos.comision_id
+                      and m.rol in ('coordinador','secretario'))
+     ))
+) with check (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and (
+        fn_es_lider(auth.uid(), comision_id)
+        or exists (select 1 from membresias m join comandos c on c.id = m.comando_id
+                    where m.usuario_id = auth.uid() and c.comision_id = eventos.comision_id
+                      and m.rol in ('coordinador','secretario'))
+     ))
+);
+
+create policy eventos_delete on eventos for delete using (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and (
+        fn_es_lider(auth.uid(), comision_id)
+        or exists (select 1 from membresias m join comandos c on c.id = m.comando_id
+                    where m.usuario_id = auth.uid() and c.comision_id = eventos.comision_id
+                      and m.rol in ('coordinador','secretario'))
+     ))
+);
+
 -- ---------------------------------------------------------------------
 -- COMUNICADOS
 -- Ver: (2026-07-25) cualquier autenticado, mismo criterio de "ver todo".
@@ -366,6 +438,20 @@ create policy comunicados_insert on comunicados for insert with check (
   or (alcance = 'general' and fn_es_direccion(auth.uid()))
 );
 
+-- (2026-07-27) update/delete: mismo alcance que insert.
+create policy comunicados_update on comunicados for update using (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and fn_es_lider(auth.uid(), comision_id))
+) with check (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and fn_es_lider(auth.uid(), comision_id))
+);
+
+create policy comunicados_delete on comunicados for delete using (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and fn_es_lider(auth.uid(), comision_id))
+);
+
 -- ---------------------------------------------------------------------
 -- ENLACES — biblioteca compartida. (2026-07-25) visible para cualquier
 -- autenticado, esté o no asignado a un comando — mismo criterio de
@@ -378,6 +464,35 @@ create policy enlaces_select on enlaces for select using (
 );
 
 create policy enlaces_insert on enlaces for insert with check (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and (
+        fn_es_lider(auth.uid(), comision_id)
+        or exists (select 1 from membresias m join comandos c on c.id = m.comando_id
+                    where m.usuario_id = auth.uid() and c.comision_id = enlaces.comision_id
+                      and m.rol in ('coordinador','secretario'))
+     ))
+);
+
+-- (2026-07-27) update/delete: mismo alcance que insert.
+create policy enlaces_update on enlaces for update using (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and (
+        fn_es_lider(auth.uid(), comision_id)
+        or exists (select 1 from membresias m join comandos c on c.id = m.comando_id
+                    where m.usuario_id = auth.uid() and c.comision_id = enlaces.comision_id
+                      and m.rol in ('coordinador','secretario'))
+     ))
+) with check (
+  fn_es_direccion(auth.uid())
+  or (comision_id is not null and (
+        fn_es_lider(auth.uid(), comision_id)
+        or exists (select 1 from membresias m join comandos c on c.id = m.comando_id
+                    where m.usuario_id = auth.uid() and c.comision_id = enlaces.comision_id
+                      and m.rol in ('coordinador','secretario'))
+     ))
+);
+
+create policy enlaces_delete on enlaces for delete using (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and (
         fn_es_lider(auth.uid(), comision_id)
@@ -436,6 +551,15 @@ create policy foro_comentarios_select on foro_comentarios for select using (auth
 
 create policy foro_comentarios_insert on foro_comentarios for insert with check (
   auth.uid() is not null and autor_id = auth.uid()
+);
+
+-- (2026-07-27) Antes faltaba esta política: el autor de un comentario no
+-- podía corregir una errata ni Dirección moderar el texto, solo borrarlo
+-- por completo. Mismo criterio que el delete: autor propio o Dirección.
+create policy foro_comentarios_update on foro_comentarios for update using (
+  autor_id = auth.uid() or fn_es_direccion(auth.uid())
+) with check (
+  autor_id = auth.uid() or fn_es_direccion(auth.uid())
 );
 
 create policy foro_comentarios_delete on foro_comentarios for delete using (

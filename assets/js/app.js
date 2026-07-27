@@ -203,6 +203,12 @@
         if (p.rol === "direccion" || p.rol === "lider" || p.rol === "coordinador") {
           opciones.push({ label: "+ Nuevo evento", accion: function () { window.NG_openNuevoEventoModal(p, comisiones); } });
         }
+        if (window.NG_PERMS.canPostComunicado(p)) {
+          opciones.push({ label: "+ Nuevo comunicado", accion: function () { window.NG_openNuevoComunicadoModal(p, comisiones); } });
+        }
+        if (window.NG_PERMS.canPostEnlaceOEvento(p)) {
+          opciones.push({ label: "+ Nuevo enlace", accion: function () { window.NG_openNuevoEnlaceModal(p, comisiones); } });
+        }
         opciones.push({ label: "+ Nuevo tema del Foro", accion: function () { window.NG_openNuevoTemaForoModal(p, comisiones); } });
 
         opciones.forEach(function (o) {

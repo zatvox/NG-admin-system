@@ -40,6 +40,23 @@
     return data;
   }
 
+  async function actualizarComunicado(id, payload) {
+    if (!db) return null;
+    var { error } = await db.from("comunicados").update({
+      titulo: payload.titulo,
+      cuerpo: payload.cuerpo,
+      alcance: payload.alcance ? "comision" : "general",
+      comision_id: payload.alcance || null
+    }).eq("id", id);
+    if (error) throw error;
+  }
+
+  async function eliminarComunicado(id) {
+    if (!db) return null;
+    var { error } = await db.from("comunicados").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   global.NG_DATA = global.NG_DATA || {};
-  global.NG_DATA.comunicados = { listar: listarComunicados, crear: crearComunicado };
+  global.NG_DATA.comunicados = { listar: listarComunicados, crear: crearComunicado, actualizar: actualizarComunicado, eliminar: eliminarComunicado };
 })(window);

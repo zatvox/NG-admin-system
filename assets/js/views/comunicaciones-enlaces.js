@@ -37,7 +37,7 @@
       container.innerHTML = "";
       var f = filter.value === "general" ? visibles.filter(function (c) { return c.alcance === "general"; }) : visibles;
       if (!f.length) { container.appendChild(el("div", { class: "empty-state" }, ["No hay comunicados para mostrar."])); return; }
-      f.forEach(function (c) { container.appendChild(S.comunicadoCard(c, comisiones)); });
+      f.forEach(function (c) { container.appendChild(S.comunicadoCard(c, comisiones, p)); });
     }
     filter.addEventListener("change", draw);
     draw();
@@ -72,7 +72,7 @@
       if (filter.value === "general") f = f.filter(function (l) { return !l.comisionId; });
       else if (filter.value) f = f.filter(function (l) { return l.comisionId === filter.value; });
       if (!f.length) { container.appendChild(el("div", { class: "empty-state" }, ["No hay enlaces para mostrar."])); return; }
-      f.slice().sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; }).forEach(function (l) { container.appendChild(S.enlaceCard(l, comisiones)); });
+      f.slice().sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; }).forEach(function (l) { container.appendChild(S.enlaceCard(l, comisiones, p)); });
     }
     filter.addEventListener("change", draw);
     draw();

@@ -89,12 +89,34 @@
     H.setTitle(tema.titulo, "Foro de Ideas");
     root.appendChild(H.crumbs([{ label: "Foro de Ideas", href: "#/foro" }, { label: tema.titulo }]));
 
+    var headRight = [el("span", { class: "badge-estado " + (ESTADO_BADGE_CLASS[tema.estado] || "badge-pendiente") }, [global.NG_DATA.foro.ESTADOS_LABEL[tema.estado] || tema.estado])];
+    // Editar (autor/Dirección/cualquier Líder) o eliminar (autor/Dirección) el
+    // tema — espejo de foro_temas_update/delete. Eliminar navega de vuelta a
+    // la lista porque el detalle ya no existe.
+    var puedeEditarTema = global.NG_PERMS.canEditarTemaForo(p, tema);
+    var puedeEliminarTema = global.NG_PERMS.canEliminarTemaForo(p, tema);
+    if (puedeEditarTema) {
+      var editTemaBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;" }, ["Editar"]);
+      editTemaBtn.addEventListener("click", function () { global.NG_openEditarTemaForoModal(tema); });
+      headRight.push(editTemaBtn);
+    }
+    if (puedeEliminarTema) {
+      var delTemaBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;color:var(--danger);" }, ["Eliminar"]);
+      delTemaBtn.addEventListener("click", function () {
+        if (!confirm("¿Eliminar este tema y todo su debate? Esta acción no se puede deshacer.")) return;
+        global.NG_DATA.foro.eliminarTema(tema.id)
+          .then(function () { global.NG_TOAST.show("Tema eliminado.", "success"); location.hash = "#/foro"; })
+          .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+      });
+      headRight.push(delTemaBtn);
+    }
+
     root.appendChild(el("div", { class: "view-head" }, [
       el("div", {}, [
         el("h1", {}, [tema.titulo]),
         el("p", {}, [(tema.autor || "—") + " · " + U.fmtFecha(tema.fecha) + (tema.comisionNombre ? " · " + tema.comisionNombre : "")])
       ]),
-      el("span", { class: "badge-estado " + (ESTADO_BADGE_CLASS[tema.estado] || "badge-pendiente") }, [global.NG_DATA.foro.ESTADOS_LABEL[tema.estado] || tema.estado])
+      el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" }, headRight)
     ]));
 
     root.appendChild(el("div", { class: "section-title" }, ["El problema"]));
@@ -126,7 +148,7 @@
       var comentarios = await global.NG_DATA.foro.listarComentarios(tema.id);
       comentariosWrap.innerHTML = "";
       if (!comentarios.length) comentariosWrap.appendChild(el("div", { class: "empty-state" }, ["Todavía nadie comentó — abre el debate."]));
-      comentarios.forEach(function (c) { comentariosWrap.appendChild(comentarioCard(c, redraw)); });
+      comentarios.forEach(function (c) { comentariosWrap.appendChild(comentarioCard(c, p, redraw)); });
       comentariosWrap.appendChild(formularioComentario());
     }
 
@@ -164,15 +186,18 @@
     redraw();
   }
 
-  function comentarioCard(c, onVoteChange) {
+  function comentarioCard(c, p, onVoteChange) {
     var card = el("div", { class: "card", style: "margin-bottom:10px;" + (c.esPropuesta ? "border-left:3px solid var(--accent);" : "") });
+    var cuerpoWrap = el("div", {});
     var headBits = [
       el("span", { style: "font-weight:600;font-size:13px;color:var(--ink);" }, [c.autor]),
       el("span", { style: "color:var(--text-faint);font-size:11.5px;margin-left:8px;" }, [U.fmtFecha(c.fecha)])
     ];
     if (c.esPropuesta) headBits.push(el("span", { class: "chip", style: "margin-left:8px;" }, ["Propuesta"]));
     card.appendChild(el("div", {}, headBits));
-    card.appendChild(el("p", { style: "margin-top:6px;" }, [c.cuerpo]));
+    var cuerpoP = el("p", { style: "margin-top:6px;" }, [c.cuerpo]);
+    cuerpoWrap.appendChild(cuerpoP);
+    card.appendChild(cuerpoWrap);
 
     var voteBtn = el("button", { class: "btn btn-ghost", type: "button", style: "font-size:12px;padding:5px 10px;margin-top:8px;" },
       [(c.yoVote ? "✓ Apoyado" : "Apoyar") + " (" + c.votos + ")"]);
@@ -184,7 +209,42 @@
         global.NG_TOAST.show(global.NG_ERR.format(err), "error");
       });
     });
-    card.appendChild(voteBtn);
+    var accionesRow = el("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap;" }, [voteBtn]);
+
+    // Editar/eliminar comentario propio (o Dirección, para moderar) —
+    // espejo de foro_comentarios_update/delete (ver migración 0006).
+    if (global.NG_PERMS.canManageComentarioForo(p, c)) {
+      var editBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;" }, ["Editar"]);
+      editBtn.addEventListener("click", function () {
+        var textarea = el("textarea", { rows: "3", style: "width:100%;" });
+        textarea.value = c.cuerpo;
+        var saveBtn = el("button", { type: "button", class: "btn btn-accent", style: "font-size:11.5px;padding:5px 10px;margin-top:8px;" }, ["Guardar"]);
+        var cancelBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;margin-top:8px;margin-left:8px;" }, ["Cancelar"]);
+        saveBtn.addEventListener("click", function () {
+          var nuevo = textarea.value.trim();
+          if (!nuevo) { global.NG_TOAST.show("El comentario no puede quedar vacío.", "error"); return; }
+          saveBtn.disabled = true;
+          global.NG_DATA.foro.editarComentario(c.id, nuevo)
+            .then(function () { global.NG_TOAST.show("Comentario editado.", "success"); onVoteChange(); })
+            .catch(function (err) { saveBtn.disabled = false; global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+        });
+        cancelBtn.addEventListener("click", function () { onVoteChange(); });
+        cuerpoWrap.innerHTML = "";
+        cuerpoWrap.appendChild(textarea); cuerpoWrap.appendChild(el("div", {}, [saveBtn, cancelBtn]));
+      });
+      accionesRow.appendChild(editBtn);
+
+      var delBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;color:var(--danger);" }, ["Eliminar"]);
+      delBtn.addEventListener("click", function () {
+        if (!confirm("¿Eliminar este comentario?")) return;
+        global.NG_DATA.foro.eliminarComentario(c.id)
+          .then(function () { global.NG_TOAST.show("Comentario eliminado.", "success"); onVoteChange(); })
+          .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+      });
+      accionesRow.appendChild(delBtn);
+    }
+
+    card.appendChild(accionesRow);
     return card;
   }
 

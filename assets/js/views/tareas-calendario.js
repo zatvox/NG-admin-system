@@ -52,7 +52,10 @@
       container.innerHTML = "";
       if (!filtered.length) { container.appendChild(el("div", { class: "empty-state" }, ["No hay tareas con estos filtros."])); return; }
       if (mode === "kanban") {
-        container.appendChild(S.kanbanBoard(filtered, null, p, draw));
+        container.appendChild(S.kanbanBoard(filtered, null, p, draw, function (t) {
+          var c = comisiones.filter(function (x) { return x.id === t.comisionId; })[0];
+          if (c) global.NG_openEditarTareaModal(t, c);
+        }));
       } else {
         var tw = el("div", { class: "table-wrap" });
         var table = el("table", {}, [el("tr", {}, [el("th", {}, ["Tarea"]), el("th", {}, ["Comisión"]), el("th", {}, ["Comando"]), el("th", {}, ["Asignado"]), el("th", {}, ["Fecha"]), el("th", {}, ["Estado"])])]);
@@ -75,7 +78,7 @@
 
   async function viewCalendario() {
     H.setTitle("Calendario");
-    var p = global.NG_STATE.persona;
+    var p = global.NG_STATE.persona; // ya se usa más abajo para eventListSection (botones editar/eliminar)
     var comisiones = await global.NG_DATA.comisiones.listar();
     var eventos = await global.NG_DATA.eventos.listar();
     var root = q("#view-root"); root.innerHTML = "";
@@ -167,7 +170,7 @@
       listWrap.innerHTML = "";
       listWrap.appendChild(el("div", { class: "section-title" }, ["Próximos eventos"]));
       var upcoming = visibleEventos.filter(function (e) { return U.diasRestantes(e.fecha, today) >= 0; });
-      listWrap.appendChild(S.eventListSection(upcoming, comisiones));
+      listWrap.appendChild(S.eventListSection(upcoming, comisiones, p));
     }
     prev.addEventListener("click", function () { global.NG_STATE.calMonth--; if (global.NG_STATE.calMonth < 0) { global.NG_STATE.calMonth = 11; global.NG_STATE.calYear--; } draw(); });
     next.addEventListener("click", function () { global.NG_STATE.calMonth++; if (global.NG_STATE.calMonth > 11) { global.NG_STATE.calMonth = 0; global.NG_STATE.calYear++; } draw(); });

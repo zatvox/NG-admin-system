@@ -53,6 +53,11 @@
             // mandar el nombre ahí causaba "invalid input syntax for type uuid"
             // (POST /tareas 400) porque asignado_id es una columna uuid.
             miembrosConId: miembrosDeEste.map(function (m) { return { id: m.usuario_id, nombre: m.usuarios ? m.usuarios.nombre : "(perfil no disponible)" }; }),
+            // miembrosDetalle SÍ trae el rol de cada quien (miembro/coordinador/
+            // secretario) — lo necesita la lista de miembros del comando para
+            // poder mostrar y cambiar el rol de cada persona (ver
+            // views/dashboard-comisiones.js, sección "Miembros").
+            miembrosDetalle: miembrosDeEste.map(function (m) { return { id: m.usuario_id, nombre: m.usuarios ? m.usuarios.nombre : "(perfil no disponible)", rol: m.rol }; }),
             tareas: (tareas || []).filter(function (t) { return t.comando_id === cd.id; }).map(function (t) { return mapTarea(t, asignaciones); })
           };
         })
@@ -84,6 +89,13 @@
       return Object.assign({}, c, {
         subgrupos: c.subgrupos.map(function (s) {
           return Object.assign({}, s, {
+            // La demo no tiene ids ni roles reales por persona (solo strings
+            // de nombre) — se sintetiza lo mínimo para que la lista de
+            // "Miembros" del comando no truene, aunque cambiar de rol no
+            // persista de verdad en modo demo (mismo criterio que el resto).
+            miembrosDetalle: (s.miembros || []).map(function (m) {
+              return { id: m, nombre: m, rol: m === s.coordinador ? "coordinador" : "miembro" };
+            }),
             tareas: s.tareas.map(function (t) {
               var asignados = t.asignado ? [{ id: t.asignado, nombre: t.asignado }] : [];
               return Object.assign({}, t, { asignados: asignados, asignadosNombres: t.asignado || "Sin asignar" });
@@ -98,6 +110,20 @@
     return db ? listarComisionesReal() : Promise.resolve(normalizarDemo(MOCK.COMISIONES));
   }
 
+  // Editar los datos de una comisión ya existente (nombre/misión/color).
+  // Permitido por comisiones_update: Dirección, o el Líder de ESA comisión.
+  // Las 5 comisiones son fijas (no hay "crear comisión" en la UI), así
+  // que esto solo actualiza, nunca inserta.
+  async function actualizarComision(comisionId, payload) {
+    if (!db) return null;
+    var { error } = await db.from("comisiones").update({
+      nombre: payload.nombre,
+      mision: payload.mision || null,
+      color: payload.color || undefined
+    }).eq("id", comisionId);
+    if (error) throw error;
+  }
+
   async function crearComando(comisionId, payload) {
     if (!db) {
       global.NG_TOAST && global.NG_TOAST.show("Comando operativo creado. Falta implementar la base de datos para guardar la información.", "info");
@@ -110,6 +136,21 @@
     }).select().single();
     if (error) throw error;
     return data;
+  }
+
+  // Editar un comando ya existente (nombre/región/enlace del grupo).
+  // Permitido por comandos_update: Dirección, o el Líder de la comisión
+  // dueña de ese comando (mismo alcance que crearComando, no incluye a
+  // Coordinador — administrar EL COMANDO como registro es distinto de
+  // administrar sus tareas/miembros, que sí puede un Coordinador).
+  async function actualizarComando(comandoId, payload) {
+    if (!db) return null;
+    var { error } = await db.from("comandos").update({
+      nombre: payload.nombre,
+      region: payload.region || null,
+      enlace_url: payload.enlaceUrl || null
+    }).eq("id", comandoId);
+    if (error) throw error;
   }
 
   // payload.asignados = array de usuario_id (puede venir vacío = sin
@@ -138,6 +179,57 @@
   async function actualizarEstadoTarea(tareaId, nuevoEstado) {
     if (!db) return null; // en demo el cambio ya se aplicó en memoria desde la vista
     var { error } = await db.from("tareas").update({ estado: nuevoEstado }).eq("id", tareaId);
+    if (error) throw error;
+  }
+
+  // Edición completa (título/descripción/fecha/estado/asignados), no solo
+  // el estado. Los asignados se reemplazan por completo: borra todas las
+  // filas de tarea_asignados de esta tarea e inserta las nuevas — más
+  // simple y confiable que calcular un diff, y el volumen por tarea es
+  // chico (unas pocas personas), así que no hay problema de performance.
+  async function actualizarTarea(tareaId, payload) {
+    if (!db) return null;
+    var { error } = await db.from("tareas").update({
+      titulo: payload.titulo,
+      descripcion: payload.descripcion || null,
+      fecha_limite: payload.fecha || null,
+      estado: payload.estado
+    }).eq("id", tareaId);
+    if (error) throw error;
+
+    var { error: eDel } = await db.from("tarea_asignados").delete().eq("tarea_id", tareaId);
+    if (eDel) throw eDel;
+    var idsAsignados = payload.asignados || [];
+    if (idsAsignados.length) {
+      var filas = idsAsignados.map(function (uid) { return { tarea_id: tareaId, usuario_id: uid }; });
+      var { error: eAsig } = await db.from("tarea_asignados").insert(filas);
+      if (eAsig) throw eAsig;
+    }
+  }
+
+  async function eliminarTarea(tareaId) {
+    if (!db) return null;
+    var { error } = await db.from("tareas").delete().eq("id", tareaId);
+    if (error) throw error;
+  }
+
+  // Cambiar el rol de una membresía existente (ej. ascender a Miembro a
+  // Coordinador/Secretario de apoyo). Permitido por membresias_update:
+  // Dirección, Líder de la comisión, o Coordinador de ESE comando.
+  async function cambiarRolMembresia(comandoId, usuarioId, nuevoRol) {
+    if (!db) return null;
+    var { error } = await db.from("membresias").update({ rol: nuevoRol })
+      .eq("comando_id", comandoId).eq("usuario_id", usuarioId);
+    if (error) throw error;
+  }
+
+  // Quitar a OTRA persona del comando (a diferencia de salirComando, que
+  // solo te saca a ti mismo). Permitido por membresias_delete para
+  // Dirección/Líder de la comisión/Coordinador de ese comando.
+  async function quitarMiembro(comandoId, usuarioId) {
+    if (!db) return null;
+    var { error } = await db.from("membresias").delete()
+      .eq("comando_id", comandoId).eq("usuario_id", usuarioId);
     if (error) throw error;
   }
 
@@ -182,10 +274,16 @@
   global.NG_DATA = global.NG_DATA || {};
   global.NG_DATA.comisiones = {
     listar: listarComisiones,
+    actualizarComision: actualizarComision,
     crearComando: crearComando,
+    actualizarComando: actualizarComando,
     crearTarea: crearTarea,
     actualizarEstadoTarea: actualizarEstadoTarea,
+    actualizarTarea: actualizarTarea,
+    eliminarTarea: eliminarTarea,
     unirseComando: unirseComando,
-    salirComando: salirComando
+    salirComando: salirComando,
+    cambiarRolMembresia: cambiarRolMembresia,
+    quitarMiembro: quitarMiembro
   };
 })(window);

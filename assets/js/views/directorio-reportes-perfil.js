@@ -92,6 +92,40 @@
     card.appendChild(S.rowKV("Rol", ROL_LABEL[p.rol]));
     root.appendChild(card);
 
+    // (2026-07-27) Antes "Mi perfil" era de solo lectura — ni el nombre ni
+    // el teléfono se podían corregir desde la interfaz. usuarios_update_
+    // propio ya lo permitía por RLS (cualquiera edita SU PROPIA fila),
+    // solo faltaba el formulario.
+    if (!global.NG_AUTH.isDemo) {
+      root.appendChild(el("div", { class: "section-title" }, ["Datos personales"]));
+      var editCard = el("div", { class: "card" });
+      var nombreInput = el("input", { type: "text", value: p.nombre, placeholder: "Tu nombre completo" });
+      var telInput = el("input", { type: "tel", value: p.telefono || "", placeholder: "Tu teléfono (opcional)" });
+      var editErr = el("div", { class: "form-error", style: "display:none;background:#FBE9E7;color:var(--danger);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:10px;" });
+      editCard.appendChild(editErr);
+      editCard.appendChild(el("div", { class: "field" }, [el("label", {}, ["Nombre completo"]), nombreInput]));
+      editCard.appendChild(el("div", { class: "field" }, [el("label", {}, ["Teléfono"]), telInput]));
+      var saveBtn = el("button", { class: "btn btn-accent", type: "button", style: "margin-top:6px;" }, ["Guardar cambios"]);
+      saveBtn.addEventListener("click", function () {
+        var nombre = nombreInput.value.trim();
+        editErr.style.display = "none";
+        if (!nombre) { editErr.textContent = "El nombre no puede quedar vacío."; editErr.style.display = "block"; return; }
+        saveBtn.disabled = true; saveBtn.textContent = "Guardando…";
+        global.NG_DATA.usuarios.actualizarPerfil({ nombre: nombre, telefono: telInput.value.trim() })
+          .then(function () {
+            global.NG_TOAST.show("Perfil actualizado.", "success");
+            if (global.NG_refreshPersonaAndGo) global.NG_refreshPersonaAndGo("#/perfil");
+            else { saveBtn.disabled = false; saveBtn.textContent = "Guardar cambios"; }
+          })
+          .catch(function (err) {
+            saveBtn.disabled = false; saveBtn.textContent = "Guardar cambios";
+            editErr.textContent = global.NG_ERR.format(err); editErr.style.display = "block";
+          });
+      });
+      editCard.appendChild(saveBtn);
+      root.appendChild(editCard);
+    }
+
     root.appendChild(el("div", { class: "section-title" }, ["Notificaciones"]));
     var card2 = el("div", { class: "card" });
     [["Nuevas tareas asignadas", true], ["Comunicados generales", true], ["Comunicados de mi comisión", true], ["Recordatorios de eventos", false]].forEach(function (item) {

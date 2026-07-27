@@ -29,6 +29,22 @@
     { value: "hecho", label: "Hecho" }
   ];
 
+  // (2026-07-27) Editar los datos de una comisión ya existente — antes
+  // solo se podía crear/leer, nunca corregir el nombre, la misión o el
+  // color desde la interfaz (la única forma era SQL manual).
+  global.NG_openEditarComisionModal = function (c) {
+    global.NG_MODAL.openForm({
+      title: "Editar comisión",
+      entityLabel: "Comisión",
+      fields: [
+        { name: "nombre", label: "Nombre de la comisión", type: "text", required: true, value: c.nombre },
+        { name: "mision", label: "Misión", type: "textarea", value: c.mision || "" },
+        { name: "color", label: "Color (hex)", type: "text", required: true, value: c.color, placeholder: "#4C5FD5" }
+      ],
+      onSave: function (v) { return global.NG_DATA.comisiones.actualizarComision(c.id, v); }
+    });
+  };
+
   global.NG_openNuevoComandoModal = function (c) {
     global.NG_MODAL.openForm({
       title: "Crear comando operativo",
@@ -42,6 +58,23 @@
         { name: "enlaceUrl", label: "Enlace del grupo (WhatsApp u otro, opcional)", type: "url", placeholder: "https://chat.whatsapp.com/..." }
       ],
       onSave: function (v) { return global.NG_DATA.comisiones.crearComando(c.id, v); }
+    });
+  };
+
+  // (2026-07-27) Editar un comando ya existente — antes "+ Crear comando
+  // operativo" era la única puerta de entrada, no había forma de corregir
+  // el nombre, la región o el enlace del grupo después de creado.
+  global.NG_openEditarComandoModal = function (s, c) {
+    global.NG_MODAL.openForm({
+      title: "Editar comando operativo",
+      subtitle: c.nombre,
+      entityLabel: "Comando operativo",
+      fields: [
+        { name: "nombre", label: "Nombre del comando operativo", type: "text", required: true, value: s.nombre },
+        { name: "region", label: "Región (opcional, uso interno de Organización)", type: "text", value: s.region || "" },
+        { name: "enlaceUrl", label: "Enlace del grupo (WhatsApp u otro, opcional)", type: "url", value: s.enlaceUrl || "", placeholder: "https://chat.whatsapp.com/..." }
+      ],
+      onSave: function (v) { return global.NG_DATA.comisiones.actualizarComando(s.id, v); }
     });
   };
 
@@ -147,6 +180,39 @@
     });
   };
 
+  // (2026-07-27) Editar una tarea existente: título, descripción, fecha,
+  // estado y asignados — antes solo se podía cambiar el estado desde el
+  // tablero kanban. "c" es la comisión dueña de la tarea (se necesita para
+  // recalcular la lista de miembros elegibles como asignados, igual que en
+  // "+ Nueva tarea"). El campo "comando" no se puede editar aquí a
+  // propósito: mover una tarea de comando es una operación distinta
+  // (reasignar dueño) que no pidieron y merece su propia revisión.
+  global.NG_openEditarTareaModal = function (t, c) {
+    var opciones = miembrosDeLaComision(c).map(function (m) { return { value: m.id, label: m.nombre }; });
+    var idsActuales = (t.asignados || []).map(function (a) { return a.id; });
+    var asignadosField = {
+      name: "asignados", label: "Asignado a (puedes elegir varias personas)", type: "userpicker", required: false,
+      options: opciones, value: idsActuales,
+      placeholder: "Escribe un nombre para filtrar…",
+      hint: opciones.length
+        ? "Escribe para filtrar por nombre completo. Marca una o más personas."
+        : 'Todavía nadie se unió a ningún comando de esta comisión.'
+    };
+    global.NG_MODAL.openForm({
+      title: "Editar tarea",
+      subtitle: c.nombre,
+      entityLabel: "Tarea",
+      fields: [
+        { name: "titulo", label: "Título de la tarea", type: "text", required: true, value: t.titulo },
+        { name: "descripcion", label: "Descripción (opcional)", type: "textarea", value: t.descripcion || "" },
+        asignadosField,
+        { name: "fecha", label: "Fecha límite", type: "date", required: true, value: t.fecha },
+        { name: "estado", label: "Estado", type: "select", options: ESTADO_OPTIONS, value: t.estado }
+      ],
+      onSave: function (v) { return global.NG_DATA.comisiones.actualizarTarea(t.id, v); }
+    });
+  };
+
   global.NG_openNuevoEventoModal = function (persona, comisiones) {
     global.NG_MODAL.openForm({
       title: "Nuevo evento",
@@ -157,6 +223,24 @@
         { name: "alcance", label: "Alcance", type: "select", options: scopeSelectOptions(persona, comisiones) }
       ],
       onSave: function (v) { return global.NG_DATA.eventos.crear(v); }
+    });
+  };
+
+  // (2026-07-27) Editar un evento/comunicado/enlace ya publicado. Reusa
+  // exactamente los mismos campos que "Nuevo X", solo que pre-llenados y
+  // con onSave apuntando a actualizar() en vez de crear(). "item.comisionId"
+  // ya viene resuelto por el mapeo de cada data/*.js, así que scopeSelectOptions
+  // funciona igual que en el modal de creación.
+  global.NG_openEditarEventoModal = function (item, persona, comisiones) {
+    global.NG_MODAL.openForm({
+      title: "Editar evento",
+      entityLabel: "Evento",
+      fields: [
+        { name: "titulo", label: "Título del evento", type: "text", required: true, value: item.titulo },
+        { name: "fecha", label: "Fecha", type: "date", required: true, value: item.fecha },
+        { name: "alcance", label: "Alcance", type: "select", options: scopeSelectOptions(persona, comisiones), value: item.comisionId || "" }
+      ],
+      onSave: function (v) { return global.NG_DATA.eventos.actualizar(item.id, v); }
     });
   };
 
@@ -173,6 +257,19 @@
     });
   };
 
+  global.NG_openEditarComunicadoModal = function (item, persona, comisiones) {
+    global.NG_MODAL.openForm({
+      title: "Editar comunicado",
+      entityLabel: "Comunicado",
+      fields: [
+        { name: "titulo", label: "Título", type: "text", required: true, value: item.titulo },
+        { name: "cuerpo", label: "Mensaje", type: "textarea", required: true, value: item.cuerpo },
+        { name: "alcance", label: "Alcance", type: "select", options: scopeSelectOptions(persona, comisiones), value: item.comisionId || "" }
+      ],
+      onSave: function (v) { return global.NG_DATA.comunicados.actualizar(item.id, v); }
+    });
+  };
+
   global.NG_openNuevoEnlaceModal = function (persona, comisiones) {
     global.NG_MODAL.openForm({
       title: "Nuevo enlace",
@@ -184,6 +281,20 @@
         { name: "alcance", label: "Comisión", type: "select", options: scopeSelectOptions(persona, comisiones) }
       ],
       onSave: function (v) { return global.NG_DATA.enlaces.crear(v); }
+    });
+  };
+
+  global.NG_openEditarEnlaceModal = function (item, persona, comisiones) {
+    global.NG_MODAL.openForm({
+      title: "Editar enlace",
+      entityLabel: "Enlace",
+      fields: [
+        { name: "nombre", label: "Nombre del recurso", type: "text", required: true, value: item.nombre },
+        { name: "url", label: "URL", type: "url", required: true, value: item.url },
+        { name: "descripcion", label: "Descripción / indicaciones", type: "textarea", value: item.descripcion || "" },
+        { name: "alcance", label: "Comisión", type: "select", options: scopeSelectOptions(persona, comisiones), value: item.comisionId || "" }
+      ],
+      onSave: function (v) { return global.NG_DATA.enlaces.actualizar(item.id, v); }
     });
   };
 
@@ -208,6 +319,22 @@
         { name: "comisionId", label: "¿Se relaciona con alguna comisión? (opcional)", type: "select", options: opcionesComision }
       ],
       onSave: function (v) { return global.NG_DATA.foro.crearTema(v); }
+    });
+  };
+
+  // (2026-07-27) Editar título/problema de un tema ya publicado — el estado
+  // (abierto/en_debate/con_conclusion) no se toca aquí, eso sigue siendo
+  // "Cerrar con conclusión". Quién puede editar se decide en views/foro.js
+  // con NG_PERMS.canEditarTemaForo (espejo de foro_temas_update).
+  global.NG_openEditarTemaForoModal = function (tema) {
+    global.NG_MODAL.openForm({
+      title: "Editar tema",
+      entityLabel: "Tema",
+      fields: [
+        { name: "titulo", label: "Título del tema", type: "text", required: true, value: tema.titulo },
+        { name: "problema", label: "¿Cuál es el problema específico?", type: "textarea", required: true, value: tema.problema }
+      ],
+      onSave: function (v) { return global.NG_DATA.foro.actualizarTema(tema.id, v); }
     });
   };
 

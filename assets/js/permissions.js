@@ -22,6 +22,7 @@
     { route: "enlaces",         label: "Enlaces",         roles: ["direccion","lider","coordinador","miembro"] },
     { route: "foro",            label: "Foro de Ideas",   roles: ["direccion","lider","coordinador","miembro","colaborador"] },
     { route: "reportes",        label: "Reportes",        roles: ["direccion"] },
+    { route: "usuarios",        label: "Usuarios",        roles: ["direccion"] },
     { route: "configuracion",   label: "Configuración",   roles: ["direccion"] }, // módulo nuevo, solo Dirección
     { route: "perfil",          label: "Mi perfil",       roles: ["direccion","lider","coordinador","miembro","colaborador"] }
   ];
@@ -76,6 +77,20 @@
     return persona.rol === "direccion" || persona.rol === "lider" || persona.rol === "coordinador";
   }
 
+  // Editar/eliminar un comunicado, enlace o evento YA PUBLICADO — espejo
+  // exacto de las políticas *_update/*_delete en rls-policies.sql. Antes
+  // no existían ni las políticas ni estos botones: una vez publicado, un
+  // comunicado/enlace/evento no se podía corregir ni borrar nunca.
+  function canManageComunicado(persona, item) {
+    if (persona.rol === "direccion") return true;
+    return persona.rol === "lider" && !!item.comisionId && persona.comisionId === item.comisionId;
+  }
+  function canManageEnlaceOEvento(persona, item) {
+    if (persona.rol === "direccion") return true;
+    if (!item.comisionId || persona.comisionId !== item.comisionId) return false;
+    return persona.rol === "lider" || persona.rol === "coordinador";
+  }
+
   // Foro de Ideas: participar (crear tema, comentar, apoyar) está abierto
   // a cualquier rol, incluido Colaborador — no hay canParticiparForo()
   // porque no hay nada que filtrar. Cerrar con conclusión sí es más
@@ -83,6 +98,23 @@
   // exacto de foro_temas_update en rls-policies.sql).
   function canCerrarTemaForo(persona, tema) {
     return persona.rol === "direccion" || persona.rol === "lider" || (tema && tema.autorId === persona.id);
+  }
+
+  // Editar el título/problema de un tema — espejo exacto de foro_temas_update
+  // (mismo criterio que cerrar con conclusión: autor, Dirección o cualquier
+  // Líder). Eliminar un tema es más estricto (foro_temas_delete): solo el
+  // autor o Dirección, sin el "cualquier Líder".
+  function canEditarTemaForo(persona, tema) {
+    return canCerrarTemaForo(persona, tema);
+  }
+  function canEliminarTemaForo(persona, tema) {
+    return persona.rol === "direccion" || (tema && tema.autorId === persona.id);
+  }
+
+  // Editar/eliminar un comentario del foro — espejo de foro_comentarios_update
+  // (nueva) / foro_comentarios_delete: solo el autor del comentario o Dirección.
+  function canManageComentarioForo(persona, comentario) {
+    return persona.rol === "direccion" || (comentario && comentario.autorId === persona.id);
   }
 
   global.NG_PERMS = {
@@ -94,6 +126,11 @@
     canEditTask: canEditTask,
     canPostComunicado: canPostComunicado,
     canPostEnlaceOEvento: canPostEnlaceOEvento,
-    canCerrarTemaForo: canCerrarTemaForo
+    canManageComunicado: canManageComunicado,
+    canManageEnlaceOEvento: canManageEnlaceOEvento,
+    canCerrarTemaForo: canCerrarTemaForo,
+    canEditarTemaForo: canEditarTemaForo,
+    canEliminarTemaForo: canEliminarTemaForo,
+    canManageComentarioForo: canManageComentarioForo
   };
 })(window);

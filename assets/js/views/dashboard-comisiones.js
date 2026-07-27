@@ -33,7 +33,7 @@
       root.appendChild(kpis);
       root.appendChild(el("div", { class: "section-title" }, ["Resumen por comisión"]));
       var grid = el("div", { class: "grid grid-cols-5" });
-      comisiones.forEach(function (c) { grid.appendChild(S.comisionCard(c)); });
+      comisiones.forEach(function (c) { grid.appendChild(S.comisionCard(c, p)); });
       root.appendChild(grid);
     } else if (p.rol === "lider") {
       var c = S.getComision(comisiones, p.comisionId);
@@ -58,7 +58,8 @@
         S.kpi(s.tareas.filter(function (x) { return x.estado === "en_curso"; }).length, "En curso")
       ]));
       root.appendChild(el("div", { class: "section-title" }, ["Tablero de " + s.nombre]));
-      root.appendChild(S.kanbanBoard(s.tareas, { comisionId: info.comision.id, subgrupoId: s.id, comisionColor: info.comision.color }, p));
+      root.appendChild(S.kanbanBoard(s.tareas, { comisionId: info.comision.id, subgrupoId: s.id, comisionColor: info.comision.color }, p, null,
+        function (t) { global.NG_openEditarTareaModal(t, info.comision); }));
     } else if (p.rol === "miembro") {
       var info2 = S.getSubgrupo(comisiones, p.subgrupoId);
       var s2 = info2.subgrupo, c2 = info2.comision;
@@ -80,11 +81,12 @@
 
   async function viewComisiones() {
     H.setTitle("Comisiones");
+    var p = global.NG_STATE.persona;
     var comisiones = await global.NG_DATA.comisiones.listar();
     var root = q("#view-root"); root.innerHTML = "";
     root.appendChild(el("div", { class: "view-head" }, [el("div", {}, [el("h1", {}, ["Comisiones"]), el("p", {}, ["Las 5 comisiones de trabajo y sus comandos operativos."])])]));
     var grid = el("div", { class: "grid grid-cols-5" });
-    comisiones.forEach(function (c) { grid.appendChild(S.comisionCard(c)); });
+    comisiones.forEach(function (c) { grid.appendChild(S.comisionCard(c, p)); });
     root.appendChild(grid);
   }
 
@@ -100,7 +102,10 @@
 
     root.appendChild(el("div", { class: "view-head" }, [
       el("div", {}, [el("h1", {}, [c.nombre]), el("p", {}, [c.mision || ""])]),
-      canManage ? S.actionBtn("+ Crear comando operativo", function () { global.NG_openNuevoComandoModal(c); }) : null
+      canManage ? el("div", { style: "display:flex;gap:8px;" }, [
+        S.actionBtn("+ Crear comando operativo", function () { global.NG_openNuevoComandoModal(c); }),
+        (function () { var b = el("button", { class: "btn btn-ghost", type: "button" }, ["Editar comisión"]); b.addEventListener("click", function () { global.NG_openEditarComisionModal(c); }); return b; })()
+      ]) : null
     ].filter(Boolean)));
 
     root.appendChild(el("div", { class: "kpi-row" }, [
@@ -117,13 +122,13 @@
 
     var eventos = await global.NG_DATA.eventos.listar();
     root.appendChild(el("div", { class: "section-title" }, ["Próximos eventos"]));
-    root.appendChild(S.eventListSection(eventos.filter(function (e) { return e.comisionId === c.id; }), comisiones));
+    root.appendChild(S.eventListSection(eventos.filter(function (e) { return e.comisionId === c.id; }), comisiones, p));
 
     var comunicados = await global.NG_DATA.comunicados.listar();
     root.appendChild(el("div", { class: "section-title" }, ["Comunicados de esta comisión"]));
     var posts = comunicados.filter(function (p2) { return p2.comisionId === c.id; });
     if (!posts.length) root.appendChild(el("div", { class: "empty-state" }, ["Aún no hay comunicados de esta comisión."]));
-    else { var pg = el("div", { class: "grid grid-cols-2" }); posts.forEach(function (p2) { pg.appendChild(S.comunicadoCard(p2, comisiones)); }); root.appendChild(pg); }
+    else { var pg = el("div", { class: "grid grid-cols-2" }); posts.forEach(function (p2) { pg.appendChild(S.comunicadoCard(p2, comisiones, p)); }); root.appendChild(pg); }
   }
 
   async function viewSubgrupoDetalle(id) {
@@ -137,10 +142,19 @@
 
     if (!global.NG_PERMS.canAccessSubgrupo(p, c.id)) { root.appendChild(H.noAccessView(p)); return; }
     var canManage = global.NG_PERMS.canManageSubgrupo(p, c.id, s.id);
+    // Editar el REGISTRO del comando (nombre/región/enlace) es más
+    // restringido que administrar sus tareas/miembros: solo Dirección o
+    // el Líder de la comisión (mismo alcance que comandos_update en
+    // rls-policies.sql), un Coordinador no lo tiene aunque sí administre
+    // el día a día del comando.
+    var canEditComando = global.NG_PERMS.canManageComision(p, c.id);
 
     root.appendChild(el("div", { class: "view-head" }, [
       el("div", {}, [el("h1", {}, [s.nombre]), el("p", {}, ["Coordinador/a: " + s.coordinador + " · " + c.nombre])]),
-      canManage ? S.actionBtn("+ Nueva tarea", function () { global.NG_openNuevaTareaModalSubgrupo(s, c); }) : null
+      el("div", { style: "display:flex;gap:8px;" }, [
+        canManage ? S.actionBtn("+ Nueva tarea", function () { global.NG_openNuevaTareaModalSubgrupo(s, c); }) : null,
+        canEditComando ? (function () { var b = el("button", { class: "btn btn-ghost", type: "button" }, ["Editar comando"]); b.addEventListener("click", function () { global.NG_openEditarComandoModal(s, c); }); return b; })() : null
+      ].filter(Boolean))
     ].filter(Boolean)));
 
     // Enlace del grupo de coordinación de ESTE comando (ej. WhatsApp),
@@ -153,10 +167,70 @@
       }, ["Abrir grupo de coordinación ↗"]));
     }
 
-    root.appendChild(el("div", { class: "section-title" }, ["Miembros (" + (s.miembros || []).length + ")"]));
-    var chips = el("div", { style: "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;" });
-    (s.miembros || []).forEach(function (m) { chips.appendChild(el("span", { class: "chip" }, [el("span", { class: "dot", style: "background:" + c.color + ";width:6px;height:6px;" }), m])); });
-    root.appendChild(chips);
+    var miembrosDetalle = s.miembrosDetalle || [];
+    var ROL_MEMBRESIA_LABEL = { miembro: "Miembro", coordinador: "Coordinador/a", secretario: "Secretario/a de apoyo" };
+    root.appendChild(el("div", { class: "section-title" }, ["Miembros (" + miembrosDetalle.length + ")"]));
+
+    if (canManage) {
+      // (2026-07-27) Quien administra el comando (Dirección, Líder de la
+      // comisión, o el propio Coordinador) puede ascender/degradar el rol
+      // de cada persona y quitarla del comando — antes esto SOLO se podía
+      // hacer con SQL manual, no había forma de nombrar un coordinador
+      // desde la interfaz.
+      var ROL_OPTIONS = [
+        { value: "miembro", label: "Miembro" },
+        { value: "coordinador", label: "Coordinador/a" },
+        { value: "secretario", label: "Secretario/a de apoyo" }
+      ];
+      var membersCard = el("div", { class: "card", style: "margin-bottom:16px;padding:6px 14px;" });
+      if (!miembrosDetalle.length) {
+        membersCard.appendChild(el("div", { class: "empty-state", style: "border:none;" }, ["Nadie se ha enlistado en este comando todavía."]));
+      }
+      miembrosDetalle.forEach(function (m) {
+        var row = el("div", { style: "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);" }, [
+          el("span", { style: "font-weight:600;font-size:13px;color:var(--ink);" }, [m.nombre])
+        ]);
+        var rolSelect = el("select", { "aria-label": "Rol de " + m.nombre, style: "font-size:12px;padding:5px 8px;" });
+        ROL_OPTIONS.forEach(function (o) {
+          var opt = el("option", { value: o.value }, [o.label]);
+          if (o.value === m.rol) opt.setAttribute("selected", "selected");
+          rolSelect.appendChild(opt);
+        });
+        rolSelect.addEventListener("change", function (e) {
+          var nuevoRol = e.target.value;
+          rolSelect.disabled = true;
+          global.NG_DATA.comisiones.cambiarRolMembresia(s.id, m.id, nuevoRol)
+            .then(function () {
+              global.NG_TOAST.show(m.nombre + " ahora es " + ROL_MEMBRESIA_LABEL[nuevoRol] + ".", "success");
+              global.NG_ROUTER.route();
+            })
+            .catch(function (err) {
+              rolSelect.disabled = false;
+              global.NG_TOAST.show(global.NG_ERR.format(err), "error");
+            });
+        });
+        var quitarBtn = el("button", { type: "button", class: "icon-btn-sm", title: "Quitar del comando", "aria-label": "Quitar a " + m.nombre + " del comando" }, ["✕"]);
+        quitarBtn.addEventListener("click", function () {
+          if (!window.confirm("¿Quitar a " + m.nombre + " de \"" + s.nombre + "\"?")) return;
+          global.NG_DATA.comisiones.quitarMiembro(s.id, m.id)
+            .then(function () {
+              global.NG_TOAST.show(m.nombre + " fue quitado del comando.", "success");
+              global.NG_ROUTER.route();
+            })
+            .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+        });
+        row.appendChild(el("div", { style: "display:flex;align-items:center;gap:8px;" }, [rolSelect, quitarBtn]));
+        membersCard.appendChild(row);
+      });
+      root.appendChild(membersCard);
+    } else {
+      var chips = el("div", { style: "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;" });
+      miembrosDetalle.forEach(function (m) {
+        var etiqueta = m.nombre + (m.rol !== "miembro" ? " · " + ROL_MEMBRESIA_LABEL[m.rol] : "");
+        chips.appendChild(el("span", { class: "chip" }, [el("span", { class: "dot", style: "background:" + c.color + ";width:6px;height:6px;" }), etiqueta]));
+      });
+      root.appendChild(chips);
+    }
 
     // "Salir de comando": solo para quien se enlistó como Miembro en ESTE
     // comando puntual (contraparte de "Unirme a este comando" en shared.js).
@@ -181,7 +255,8 @@
     }
 
     root.appendChild(el("div", { class: "section-title" }, ["Tablero de tareas"]));
-    root.appendChild(S.kanbanBoard(s.tareas, { comisionId: c.id, subgrupoId: s.id, comisionColor: c.color }, p));
+    root.appendChild(S.kanbanBoard(s.tareas, { comisionId: c.id, subgrupoId: s.id, comisionColor: c.color }, p, null,
+      function (t) { global.NG_openEditarTareaModal(t, c); }));
   }
 
   global.NG_VIEWS = global.NG_VIEWS || {};
