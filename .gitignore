@@ -5,3 +5,11 @@ Thumbs.db
 
 # Si en algún momento se agrega un flujo con Node (no aplica hoy, es HTML/JS plano)
 node_modules/
+
+# Script local de invitación masiva (scripts/invitacion-masiva/): la
+# service_role key de Supabase y los datos personales (DNI, celular, etc.)
+# de la base de simpatizantes NUNCA deben llegar al repo público.
+scripts/invitacion-masiva/.env
+scripts/invitacion-masiva/*.xlsx
+scripts/invitacion-masiva/*.csv
+scripts/invitacion-masiva/resultados/

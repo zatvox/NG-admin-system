@@ -12,12 +12,18 @@
     H.setTitle("Tareas");
     var p = global.NG_STATE.persona;
     var comisiones = await global.NG_DATA.comisiones.listar();
+    // (2026-07-30) Antes filtraba contra el ÚNICO p.comisionId/subgrupoId —
+    // ahora contra TODAS las comisiones/comandos donde la persona tiene
+    // algún rol (puede estar en un comando de Organización Y otro de
+    // Eventos al mismo tiempo, ver permissions.js).
+    var misComisiones = global.NG_PERMS.misComisionIds(p); // null = Dirección, ve todo
+    var misComandos = global.NG_PERMS.misComandoIds(p);
     var base = S.allTareas(comisiones);
-    if (p.rol === "lider") base = base.filter(function (t) { return t.comisionId === p.comisionId; });
-    if (p.rol === "coordinador" || p.rol === "miembro") base = base.filter(function (t) { return t.subgrupoId === p.subgrupoId; });
+    if (p.rol === "lider") base = base.filter(function (t) { return misComisiones.indexOf(t.comisionId) >= 0; });
+    if (p.rol === "coordinador" || p.rol === "miembro") base = base.filter(function (t) { return misComandos.indexOf(t.subgrupoId) >= 0; });
 
     var root = q("#view-root"); root.innerHTML = "";
-    var comisionesVisibles = p.rol === "direccion" ? comisiones : comisiones.filter(function (c) { return c.id === p.comisionId; });
+    var comisionesVisibles = p.rol === "direccion" ? comisiones : comisiones.filter(function (c) { return misComisiones.indexOf(c.id) >= 0; });
 
     root.appendChild(el("div", { class: "view-head" }, [
       el("div", {}, [el("h1", {}, ["Tareas"]), el("p", {}, ["Vista consolidada de tareas según tu alcance de acceso."])]),
@@ -88,10 +94,11 @@
       (p.rol === "direccion" || p.rol === "lider" || p.rol === "coordinador") ? S.actionBtn("+ Nuevo evento", function () { global.NG_openNuevoEventoModal(p, comisiones); }) : null
     ].filter(Boolean)));
 
+    var misComisiones = global.NG_PERMS.misComisionIds(p); // null = Dirección, ve todo
     var visibleEventos = eventos.filter(function (e) {
       if (p.rol === "direccion") return true;
       if (!e.comisionId) return true;
-      return e.comisionId === p.comisionId;
+      return misComisiones.indexOf(e.comisionId) >= 0;
     });
 
     var calWrap = el("div", { class: "card cal-card" });

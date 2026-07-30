@@ -87,8 +87,23 @@
 
     root.appendChild(el("div", { class: "section-title" }, ["Pertenencias"]));
     var card = el("div", { class: "card" });
-    card.appendChild(S.rowKV("Comisión", c ? c.nombre : "No asignada"));
-    card.appendChild(S.rowKV("Comando operativo", s ? s.subgrupo.nombre : "No asignado"));
+    // (2026-07-30) Antes solo mostraba UN comando (p.subgrupoId) — ahora
+    // lista TODAS las membresías, porque una persona puede estar en varios
+    // comandos de comisiones distintas a la vez (ej. su Macrodistrital de
+    // Organización, más un comando de Eventos por su oficio).
+    var ROL_MEMBRESIA_LABEL = { miembro: "Miembro", coordinador: "Coordinador/a" };
+    if (p.membresias && p.membresias.length) {
+      p.membresias.forEach(function (m) {
+        var info = S.getSubgrupo(comisiones, m.comandoId);
+        var etiqueta = info ? (info.subgrupo.nombre + " · " + info.comision.nombre) : "Comando";
+        card.appendChild(S.rowKV(etiqueta, ROL_MEMBRESIA_LABEL[m.rol] || m.rol));
+      });
+      if (p.esLider) card.appendChild(S.rowKV("Comisión que lideras", c ? c.nombre : "—"));
+    } else if (p.rol === "lider") {
+      card.appendChild(S.rowKV("Comisión", c ? c.nombre : "No asignada"));
+    } else {
+      card.appendChild(S.rowKV("Comando operativo", "No perteneces a ningún comando todavía"));
+    }
     card.appendChild(S.rowKV("Rol", ROL_LABEL[p.rol]));
     root.appendChild(card);
 

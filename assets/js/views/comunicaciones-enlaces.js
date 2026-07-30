@@ -20,10 +20,11 @@
       canPost ? S.actionBtn("+ Nuevo comunicado", function () { global.NG_openNuevoComunicadoModal(p, comisiones); }) : null
     ].filter(Boolean)));
 
+    var misComisiones = global.NG_PERMS.misComisionIds(p); // null = Dirección, ve todo
     var visibles = comunicados.filter(function (c) {
       if (p.rol === "direccion") return true;
       if (c.alcance === "general") return true;
-      return c.comisionId === p.comisionId;
+      return misComisiones.indexOf(c.comisionId) >= 0;
     }).sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; });
 
     var toolbar = el("div", { class: "toolbar" });

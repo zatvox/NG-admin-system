@@ -74,31 +74,86 @@
   // El chip del topbar SIEMPRE se muestra (antes se ocultaba si no tenías
   // comisión, y por eso no se notaba en qué rol/estado estabas). El botón
   // "Enlistarse" solo aparece para Colaborador (= sin comando todavía).
-  // (2026-07-27) Ahora es un <a> clickeable que lleva directo a tu comisión,
-  // y usa el color real de la comisión como fondo (--c) en vez de gris fijo.
+  // (2026-07-30) Con multi-comisión/multi-comando, ya no tiene sentido que
+  // el chip sea un link a "tu" comisión (¿cuál, si estás en 3?). Ahora es
+  // un desplegable de SOLO LECTURA: el chip resume cuántas pertenencias
+  // tienes, y el panel (ver #topbar-context-panel, toggle en wireContextChip())
+  // las lista todas — comisiones que lideras + cada comando, con su rol —
+  // sin ningún link ni acción, solo para consultar de un vistazo en qué
+  // estás. Para IR a un comando puntual se sigue usando "Comisiones" o el
+  // buscador global.
   function updateTopbarContext() {
     var box = q("#topbar-context");
+    var panel = q("#topbar-context-panel");
     var enlistBtn = q("#topbar-enlistarse");
     var p = window.NG_STATE.persona;
     var rolLabel = ROL_LABELS[p.rol] || p.rol;
 
     if (enlistBtn) enlistBtn.style.display = (p.rol === "colaborador") ? "inline-flex" : "none";
+    q("#topbar-context-wrap").style.display = "inline-flex";
 
-    if (!p.comisionId) {
-      box.innerHTML = esc(rolLabel) + " · Sin comisión asignada";
-      box.style.display = "inline-flex";
-      box.href = "#/comisiones";
+    if (p.rol === "direccion") {
+      box.innerHTML = esc(rolLabel);
       box.style.removeProperty("--c");
+      panel.innerHTML = "";
+      panel.appendChild(el("div", { class: "topbar-panel-item" }, ["Acceso completo a las 5 comisiones y todos sus comandos."]));
       return;
     }
+
     window.NG_DATA.comisiones.listar().then(function (comisiones) {
-      var c = comisiones.filter(function (x) { return x.id === p.comisionId; })[0];
-      if (!c) { box.innerHTML = esc(rolLabel); box.style.display = "inline-flex"; box.href = "#/comisiones"; return; }
-      var sub = p.subgrupoId ? c.subgrupos.filter(function (s) { return s.id === p.subgrupoId; })[0] : null;
-      box.innerHTML = esc(rolLabel) + ' · <span class="dot" style="background:' + c.color + ';width:6px;height:6px;"></span>' + esc(c.nombre) + (sub ? " · " + esc(sub.nombre) : "");
-      box.style.display = "inline-flex";
-      box.style.setProperty("--c", c.color);
-      box.href = sub ? "#/subgrupo/" + sub.id : "#/comisiones/" + c.id;
+      function comision(id) { return comisiones.filter(function (x) { return x.id === id; })[0] || null; }
+      function comando(comandoId) {
+        for (var i = 0; i < comisiones.length; i++) {
+          var s = (comisiones[i].subgrupos || []).filter(function (x) { return x.id === comandoId; })[0];
+          if (s) return { subgrupo: s, comision: comisiones[i] };
+        }
+        return null;
+      }
+
+      var lideradas = p.comisionesLideradas || (p.rol === "lider" && p.comisionId ? [p.comisionId] : []);
+      var membresias = p.membresias || (p.subgrupoId ? [{ comandoId: p.subgrupoId, comisionId: p.comisionId, rol: p.rol }] : []);
+      var total = lideradas.length + membresias.length;
+      var colorPrincipal = lideradas.length ? (comision(lideradas[0]) || {}).color
+        : (membresias.length ? (comando(membresias[0].comandoId) || {}).comision && comando(membresias[0].comandoId).comision.color : null);
+
+      // ---- Chip: resumen corto ----
+      if (!total) {
+        box.innerHTML = esc(rolLabel) + " · Sin comisión asignada";
+        box.style.removeProperty("--c");
+      } else if (total === 1) {
+        var etiqueta = lideradas.length ? (comision(lideradas[0]) || {}).nombre : ((comando(membresias[0].comandoId) || {}).subgrupo || {}).nombre;
+        box.innerHTML = esc(rolLabel) + ' · <span class="dot" style="background:' + (colorPrincipal || "var(--accent)") + ';width:6px;height:6px;"></span>' + esc(etiqueta || "");
+        box.style.setProperty("--c", colorPrincipal || "var(--accent)");
+      } else {
+        box.innerHTML = esc(rolLabel) + ' · <span class="dot" style="background:' + (colorPrincipal || "var(--accent)") + ';width:6px;height:6px;"></span>' + total + " pertenencias";
+        box.style.setProperty("--c", colorPrincipal || "var(--accent)");
+      }
+
+      // ---- Panel: lista completa, no clickeable ----
+      panel.innerHTML = "";
+      if (!total) {
+        panel.appendChild(el("div", { class: "topbar-panel-empty" }, ['Todavía no perteneces a ningún comando. Usa "+ Enlistarse" o entra a "Comisiones".']));
+      }
+      lideradas.forEach(function (id) {
+        var c = comision(id);
+        panel.appendChild(el("div", { class: "topbar-panel-item", style: "display:flex;align-items:center;gap:8px;" }, [
+          el("span", { class: "dot", style: "background:" + (c ? c.color : "var(--accent)") + ";width:6px;height:6px;flex-shrink:0;" }),
+          el("span", { style: "flex:1;" }, [c ? c.nombre : "Comisión"]),
+          el("span", { class: "chip" }, ["Líder"])
+        ]));
+      });
+      membresias.forEach(function (m) {
+        var info = comando(m.comandoId);
+        var etiquetaRol = { coordinador: "Coordinador/a", miembro: "Miembro" }[m.rol] || m.rol;
+        panel.appendChild(el("div", { class: "topbar-panel-item", style: "display:flex;align-items:center;gap:8px;" }, [
+          el("span", { class: "dot", style: "background:" + (info ? info.comision.color : "var(--accent)") + ";width:6px;height:6px;flex-shrink:0;" }),
+          el("div", { style: "flex:1;display:flex;flex-direction:column;" }, [
+            el("span", {}, [info ? info.subgrupo.nombre : "Comando"]),
+            el("span", { style: "font-size:10.5px;color:var(--text-faint);" }, [info ? info.comision.nombre : ""])
+          ]),
+          el("span", { class: "chip" }, [etiquetaRol])
+        ]));
+      });
     });
   }
 
@@ -194,7 +249,8 @@
       var p = window.NG_STATE.persona;
       window.NG_DATA.comisiones.listar().then(function (comisiones) {
         panel.innerHTML = "";
-        var comisionesVisibles = p.rol === "direccion" ? comisiones : comisiones.filter(function (c) { return c.id === p.comisionId; });
+        var misComisiones = window.NG_PERMS.misComisionIds(p); // null = Dirección, ve todo
+        var comisionesVisibles = p.rol === "direccion" ? comisiones : comisiones.filter(function (c) { return misComisiones.indexOf(c.id) >= 0; });
 
         var opciones = [];
         if (p.rol !== "miembro") {
@@ -256,8 +312,9 @@
         var mia = (t.asignados || []).some(function (a) { return a.id === p.id || a.nombre === p.nombre; });
         return mia && U.diasRestantes(t.fecha, hoy) <= 3;
       });
+      var misComisiones = window.NG_PERMS.misComisionIds(p); // null = Dirección, ve todo
       var comunicadosRecientes = comunicados.filter(function (c) {
-        var propio = c.alcance === "general" || c.comisionId === p.comisionId;
+        var propio = c.alcance === "general" || (p.rol === "direccion" ? true : misComisiones.indexOf(c.comisionId) >= 0);
         return propio && U.diasRestantes(c.fecha, hoy) >= -3 && U.diasRestantes(c.fecha, hoy) <= 0;
       });
       return misTareas.length + comunicadosRecientes.length;
@@ -278,8 +335,9 @@
           var mia = (t.asignados || []).some(function (a) { return a.id === p.id || a.nombre === p.nombre; });
           return mia && U.diasRestantes(t.fecha, hoy) <= 3;
         }).sort(function (a, b) { return U.diasRestantes(a.fecha, hoy) - U.diasRestantes(b.fecha, hoy); });
+        var misComisiones2 = window.NG_PERMS.misComisionIds(p); // null = Dirección, ve todo
         var comunicadosRecientes = comunicados.filter(function (c) {
-          var propio = c.alcance === "general" || c.comisionId === p.comisionId;
+          var propio = c.alcance === "general" || (p.rol === "direccion" ? true : misComisiones2.indexOf(c.comisionId) >= 0);
           return propio && U.diasRestantes(c.fecha, hoy) >= -3 && U.diasRestantes(c.fecha, hoy) <= 0;
         });
 
@@ -321,7 +379,7 @@
   }
 
   function closeAllDropdowns() {
-    ["#topbar-quickcreate-panel", "#topbar-notif-panel", "#topbar-search-results"].forEach(function (sel) {
+    ["#topbar-quickcreate-panel", "#topbar-notif-panel", "#topbar-context-panel", "#topbar-search-results"].forEach(function (sel) {
       var p = q(sel);
       if (p) p.classList.remove("open");
     });
@@ -349,6 +407,22 @@
     q("#topbar-avatar").textContent = initials(persona.nombre);
     updateTopbarContext();
     renderNav();
+  }
+
+  // Abre/cierra el panel de pertenencias del chip de contexto. El contenido
+  // ya lo llena updateTopbarContext() cada vez que cambia la persona —
+  // aquí solo se maneja el toggle abierto/cerrado, igual que quick-create
+  // y notificaciones.
+  function wireContextChip() {
+    var btn = q("#topbar-context");
+    var panel = q("#topbar-context-panel");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var abriendo = !panel.classList.contains("open");
+      closeAllDropdowns();
+      if (abriendo) panel.classList.add("open");
+    });
   }
 
   function wireTopbar() {
@@ -382,6 +456,7 @@
 
       setPersona(persona);
       wireTopbar();
+      wireContextChip();
       wireGlobalSearch();
       wireQuickCreate();
       wireNotifications();

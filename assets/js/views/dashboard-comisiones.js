@@ -49,26 +49,51 @@
       c.subgrupos.forEach(function (s) { g.appendChild(S.subgrupoCard(s, c, p)); });
       root.appendChild(g);
       root.appendChild(S.taskListSection("Tareas pendientes en tu comisión", t.filter(function (x) { return x.estado !== "hecho"; }).slice(0, 6)));
-    } else if (p.rol === "coordinador") {
-      var info = S.getSubgrupo(comisiones, p.subgrupoId);
-      var s = info.subgrupo;
-      root.appendChild(el("div", { class: "kpi-row" }, [
-        S.kpi((s.miembros || []).length, "Miembros del comando"),
-        S.kpi(s.tareas.filter(function (x) { return x.estado === "pendiente"; }).length, "Pendientes"),
-        S.kpi(s.tareas.filter(function (x) { return x.estado === "en_curso"; }).length, "En curso")
-      ]));
-      root.appendChild(el("div", { class: "section-title" }, ["Tablero de " + s.nombre]));
-      root.appendChild(S.kanbanBoard(s.tareas, { comisionId: info.comision.id, subgrupoId: s.id, comisionColor: info.comision.color }, p, null,
-        function (t) { global.NG_openEditarTareaModal(t, info.comision); }));
-    } else if (p.rol === "miembro") {
-      var info2 = S.getSubgrupo(comisiones, p.subgrupoId);
-      var s2 = info2.subgrupo, c2 = info2.comision;
-      var mias = s2.tareas.filter(function (t) { return (t.asignados || []).some(function (a) { return a.id === p.id || a.nombre === p.nombre; }); });
+    } else if (p.rol === "coordinador" || p.rol === "miembro") {
+      // (2026-07-30) Antes solo miraba p.subgrupoId (UN comando). Ahora
+      // recorre TODAS sus membresías: puede coordinar un comando y a la vez
+      // ser simple miembro de otro, en comisiones distintas. Se muestra un
+      // tablero completo por cada comando que coordina, y una lista
+      // combinada de "mis tareas" para los comandos donde es solo miembro.
+      var misMembresias = (p.membresias && p.membresias.length) ? p.membresias : [{ comandoId: p.subgrupoId, comisionId: p.comisionId, rol: p.rol }];
+      var comoCoordinador = misMembresias.filter(function (m) { return m.rol === "coordinador"; });
+      var comoMiembro = misMembresias.filter(function (m) { return m.rol === "miembro"; });
+
+      comoCoordinador.forEach(function (m) {
+        var info = S.getSubgrupo(comisiones, m.comandoId);
+        if (!info) return;
+        var s = info.subgrupo, c = info.comision;
+        root.appendChild(el("div", { class: "kpi-row" }, [
+          S.kpi((s.miembros || []).length, "Miembros del comando"),
+          S.kpi(s.tareas.filter(function (x) { return x.estado === "pendiente"; }).length, "Pendientes"),
+          S.kpi(s.tareas.filter(function (x) { return x.estado === "en_curso"; }).length, "En curso")
+        ]));
+        root.appendChild(el("div", { class: "section-title" }, ["Tablero de " + s.nombre + " · " + c.nombre]));
+        root.appendChild(S.kanbanBoard(s.tareas, { comisionId: c.id, subgrupoId: s.id, comisionColor: c.color }, p, null,
+          function (t) { global.NG_openEditarTareaModal(t, c); }));
+      });
+
       var eventosAll = await global.NG_DATA.eventos.listar();
-      root.appendChild(el("div", { class: "section-title" }, ["Mis tareas"]));
-      root.appendChild(S.taskListSection(null, mias.length ? mias : s2.tareas.slice(0, 4)));
-      root.appendChild(el("div", { class: "section-title" }, ["Próximos eventos de " + c2.nombre]));
-      root.appendChild(S.eventListSection(eventosAll.filter(function (e) { return e.comisionId === c2.id || e.alcance === "general"; }).slice(0, 4), comisiones));
+
+      if (comoMiembro.length) {
+        var todasMisTareas = [];
+        var comisionesDeMisComandos = {};
+        comoMiembro.forEach(function (m) {
+          var info2 = S.getSubgrupo(comisiones, m.comandoId);
+          if (!info2) return;
+          comisionesDeMisComandos[info2.comision.id] = info2.comision.nombre;
+          (info2.subgrupo.tareas || []).forEach(function (t) {
+            if ((t.asignados || []).some(function (a) { return a.id === p.id || a.nombre === p.nombre; })) todasMisTareas.push(t);
+          });
+        });
+        root.appendChild(el("div", { class: "section-title" }, ["Mis tareas"]));
+        root.appendChild(S.taskListSection(null, todasMisTareas));
+        var idsComisionesMiembro = Object.keys(comisionesDeMisComandos);
+        root.appendChild(el("div", { class: "section-title" }, ["Próximos eventos"]));
+        root.appendChild(S.eventListSection(eventosAll.filter(function (e) { return e.alcance === "general" || idsComisionesMiembro.indexOf(e.comisionId) >= 0; }).slice(0, 4), comisiones));
+      } else if (!comoCoordinador.length) {
+        root.appendChild(el("div", { class: "empty-state" }, ["Todavía no estás en ningún comando operativo."]));
+      }
     } else {
       var comunicados = await global.NG_DATA.comunicados.listar();
       root.appendChild(el("div", { class: "empty-state" }, ['Aún no perteneces a ningún comando operativo. Revisa "Comunicados" para ver a qué comisiones puedes sumarte.']));
@@ -236,7 +261,13 @@
     // comando puntual (contraparte de "Unirme a este comando" en shared.js).
     // No se ofrece a Coordinador/Líder/Dirección: su membresía/cargo la
     // gestiona quien administra el comando, no un botón de autoservicio.
-    if (p.rol === "miembro" && p.subgrupoId === s.id) {
+    // (2026-07-30) Antes comparaba contra el único p.subgrupoId "principal"
+    // — ahora contra CUALQUIERA de sus membresías, porque puede estar
+    // enlistado como Miembro en este comando aunque no sea el primero al
+    // que se unió.
+    var miMembresiaAqui = (p.membresias || (p.subgrupoId ? [{ comandoId: p.subgrupoId, rol: p.rol }] : []))
+      .filter(function (m) { return m.comandoId === s.id; })[0];
+    if (miMembresiaAqui && miMembresiaAqui.rol === "miembro") {
       var leaveBtn = el("button", { class: "btn btn-ghost", type: "button", style: "margin-bottom:16px;font-size:12px;padding:7px 12px;" }, ["Salir de este comando"]);
       leaveBtn.addEventListener("click", function () {
         if (!window.confirm("¿Seguro que quieres salir de \"" + s.nombre + "\"? Perderás el acceso a sus tareas.")) return;

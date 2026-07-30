@@ -11,14 +11,19 @@
   var isoDate = global.NG_UTILS.isoDate;
   var TODAY = function () { return global.NG_STATE.today; };
 
+  // (2026-07-30) Antes solo ofrecía persona.comisionId (una sola comisión) —
+  // una persona puede liderar y/o coordinar comandos en varias comisiones a
+  // la vez, así que se listan TODAS donde tiene alcance para publicar (ver
+  // NG_PERMS.comisionesConAlcance, espejo de a quién dejan las políticas
+  // *_insert de comunicados/enlaces/eventos).
   function scopeSelectOptions(persona, comisiones) {
     var opts = [];
     if (persona.rol === "direccion") {
       opts.push({ value: "", label: "General (toda la organización)" });
       comisiones.forEach(function (c) { opts.push({ value: c.id, label: c.nombre }); });
     } else {
-      var c = comisiones.filter(function (x) { return x.id === persona.comisionId; })[0];
-      if (c) opts.push({ value: c.id, label: c.nombre });
+      var ids = global.NG_PERMS.comisionesConAlcance(persona);
+      comisiones.filter(function (c) { return ids.indexOf(c.id) >= 0; }).forEach(function (c) { opts.push({ value: c.id, label: c.nombre }); });
     }
     return opts;
   }

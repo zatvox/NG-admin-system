@@ -57,6 +57,16 @@
   }
 
   // ---- MODO REAL (Supabase Auth) --------------------------------------
+  // (2026-07-30) Antes esta función solo traía UNA membresía (.limit(1)) y
+  // asumía que una persona pertenece a una sola comisión/comando a la vez.
+  // Eso rompía el caso real: alguien puede estar en un comando Macrodistrital
+  // de Organización (por su distrito) Y, aparte, en un comando de Eventos o
+  // Formación (por su oficio/habilidad) al mismo tiempo. Ahora se traen
+  // TODAS las membresías en `persona.membresias` — permissions.js valida
+  // acceso/edición contra esa lista completa, no contra un solo id.
+  // `comisionId`/`subgrupoId` se mantienen (= primera membresía) solo para
+  // que el Inicio y el chip del topbar tengan un contexto "principal" por
+  // default; nunca se usan ya para decidir si algo se puede ver o editar.
   async function cargarPersonaReal(authUser) {
     var usuario = await buscarUsuarioConReintento(authUser.id);
     if (!usuario) {
@@ -64,38 +74,55 @@
       err.code = "PERFIL_NO_ENCONTRADO";
       throw err;
     }
+    var base = { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono };
 
     if (usuario.es_direccion) {
-      return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, rol: "direccion", comisionId: null, subgrupoId: null };
+      return Object.assign({}, base, { rol: "direccion", comisionId: null, subgrupoId: null, membresias: [], comisionesLideradas: [] });
     }
 
-    // ¿Es Líder de alguna comisión?
-    var { data: liderDe, error: e2 } = await db.from("comisiones").select("id").eq("lider_id", usuario.id).limit(1);
+    // ¿Lidera alguna(s) comisión(es)? (normalmente 1, pero no se asume).
+    var { data: liderDe, error: e2 } = await db.from("comisiones").select("id").eq("lider_id", usuario.id);
     if (e2) throw new Error("No se pudo verificar tu comisión (" + e2.message + ").");
-    if (liderDe && liderDe.length) {
-      return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, rol: "lider", comisionId: liderDe[0].id, subgrupoId: null };
-    }
+    var comisionesLideradas = (liderDe || []).map(function (c) { return c.id; });
 
-    // ¿Tiene alguna membresía (coordinador/secretario/miembro)? Se separa en
-    // dos consultas simples (en vez de un embed "comandos!inner(...)") para
-    // no depender de que Supabase ya haya refrescado el caché de relaciones
+    // TODAS sus membresías de comando (no solo la primera). Se separa en dos
+    // consultas simples (en vez de un embed "comandos!inner(...)") para no
+    // depender de que Supabase ya haya refrescado el caché de relaciones
     // justo después de correr schema.sql — una causa común de errores 500
     // "recién instalado el sistema".
-    var { data: membresia, error: e3 } = await db.from("membresias").select("rol, comando_id").eq("usuario_id", usuario.id).limit(1).maybeSingle();
-    if (e3) throw new Error("No se pudo verificar tu comando (" + e3.message + ").");
+    var { data: membresiasRaw, error: e3 } = await db.from("membresias").select("rol, comando_id").eq("usuario_id", usuario.id).order("created_at", { ascending: true });
+    if (e3) throw new Error("No se pudo verificar tus comandos (" + e3.message + ").");
 
-    if (membresia) {
-      var { data: comando, error: e4 } = await db.from("comandos").select("comision_id").eq("id", membresia.comando_id).maybeSingle();
-      if (e4) throw new Error("No se pudo verificar tu comisión (" + e4.message + ").");
-      var rol = (membresia.rol === "secretario") ? "coordinador" : membresia.rol; // secretario hereda permisos de coordinador
-      return {
-        id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono,
-        rol: rol, comisionId: comando ? comando.comision_id : null, subgrupoId: membresia.comando_id
-      };
+    var comandoIds = (membresiasRaw || []).map(function (m) { return m.comando_id; });
+    var comisionPorComando = {};
+    if (comandoIds.length) {
+      var { data: comandos, error: e4 } = await db.from("comandos").select("id, comision_id").in("id", comandoIds);
+      if (e4) throw new Error("No se pudo verificar tus comisiones (" + e4.message + ").");
+      (comandos || []).forEach(function (c) { comisionPorComando[c.id] = c.comision_id; });
     }
+    var membresias = (membresiasRaw || []).map(function (m) {
+      return {
+        comandoId: m.comando_id,
+        comisionId: comisionPorComando[m.comando_id] || null,
+        rol: (m.rol === "secretario") ? "coordinador" : m.rol // secretario hereda permisos de coordinador
+      };
+    });
 
-    // Sin comisión asignada todavía = Colaborador (spec secc. 3).
-    return { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, rol: "colaborador", comisionId: null, subgrupoId: null };
+    var esLider = comisionesLideradas.length > 0;
+    var rolGlobal; // solo para qué aparece en el menú lateral (ver permissions.js NAV)
+    if (esLider) rolGlobal = "lider";
+    else if (membresias.some(function (m) { return m.rol === "coordinador"; })) rolGlobal = "coordinador";
+    else if (membresias.length) rolGlobal = "miembro";
+    else rolGlobal = "colaborador"; // sin comisión ni comando asignado todavía (spec secc. 3)
+
+    return Object.assign({}, base, {
+      rol: rolGlobal,
+      esLider: esLider,
+      comisionesLideradas: comisionesLideradas,
+      comisionId: esLider ? comisionesLideradas[0] : (membresias[0] ? membresias[0].comisionId : null),
+      subgrupoId: membresias[0] ? membresias[0].comandoId : null,
+      membresias: membresias
+    });
   }
 
   async function realLogin(email, password) {

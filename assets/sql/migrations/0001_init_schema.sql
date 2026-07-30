@@ -55,6 +55,7 @@ create table if not exists usuarios (
   email          text not null unique,
   nombre         text not null,
   telefono       text,
+  dni            text, -- (2026-07-28) para invitación masiva desde la base de simpatizantes
   avatar_url     text,
   es_direccion   boolean not null default false, -- rol global "Dirección General"
   estado         estado_usuario not null default 'pendiente_activacion',
@@ -329,11 +330,17 @@ set search_path = public
 as $$
 begin
   begin
-    insert into public.usuarios (id, email, nombre, estado)
+    -- (2026-07-28) También precarga teléfono/DNI si vienen en los metadatos
+    -- de la cuenta (ej. invitación masiva vía Admin API con `data: {nombre,
+    -- telefono, dni}`) — antes solo el nombre se copiaba, el resto se
+    -- quedaba vacío hasta que la persona lo llenara a mano en "Mi perfil".
+    insert into public.usuarios (id, email, nombre, telefono, dni, estado)
     values (
       new.id,
       new.email,
       coalesce(new.raw_user_meta_data->>'nombre', split_part(new.email,'@',1)),
+      new.raw_user_meta_data->>'telefono',
+      new.raw_user_meta_data->>'dni',
       'pendiente_activacion'
     )
     on conflict (id) do nothing;

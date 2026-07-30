@@ -7,10 +7,60 @@
  *
  * `persona` es el objeto de sesión actual con esta forma:
  *   { id, nombre, rol: 'direccion'|'lider'|'coordinador'|'miembro'|'colaborador',
- *     comisionId, subgrupoId }
+ *     comisionId, subgrupoId, comisionesLideradas: [id...],
+ *     membresias: [{ comandoId, comisionId, rol }] }
+ *
+ * (2026-07-30) Una persona puede pertenecer a VARIOS comandos en VARIAS
+ * comisiones a la vez (ej. su comando Macrodistrital de Organización por
+ * distrito, MÁS un comando de Eventos por su oficio). `comisionId`/
+ * `subgrupoId` son solo el contexto "principal" (primera membresía) para
+ * el Inicio/topbar — todas las funciones de abajo validan contra la lista
+ * completa (`membresias`/`comisionesLideradas`), nunca contra ese único id.
+ * En modo demo (`NG_MOCK`), donde cada persona SÍ tiene un solo comando,
+ * los helpers caen de vuelta a comparar contra comisionId/subgrupoId.
  * ===================================================================== */
 (function (global) {
   "use strict";
+
+  // ¿Lidera esta comisión puntual? (comisionesLideradas real, o el único
+  // comisionId de una persona "lider" en modo demo).
+  function lideraComision(persona, comisionId) {
+    if (!comisionId) return false;
+    if (persona.comisionesLideradas) return persona.comisionesLideradas.indexOf(comisionId) >= 0;
+    return persona.rol === "lider" && persona.comisionId === comisionId;
+  }
+
+  // ¿Tiene alguna membresía (el rol que sea) en un comando de esta comisión?
+  function tieneMembresiaEnComision(persona, comisionId) {
+    if (!comisionId) return false;
+    if (persona.membresias) return persona.membresias.some(function (m) { return m.comisionId === comisionId; });
+    return persona.comisionId === comisionId;
+  }
+
+  // La membresía puntual de la persona en ESE comando (o null si no está).
+  function membresiaEnComando(persona, comandoId) {
+    if (!comandoId) return null;
+    if (persona.membresias) return persona.membresias.filter(function (m) { return m.comandoId === comandoId; })[0] || null;
+    return persona.subgrupoId === comandoId ? { comandoId: comandoId, comisionId: persona.comisionId, rol: persona.rol } : null;
+  }
+
+  // ¿Es coordinador (o secretario, que hereda el permiso) en ALGÚN comando
+  // de esta comisión? Se usa para "alcance" de comunicados/enlaces/eventos.
+  function esCoordinadorEnComision(persona, comisionId) {
+    if (!comisionId) return false;
+    if (persona.membresias) return persona.membresias.some(function (m) { return m.comisionId === comisionId && m.rol === "coordinador"; });
+    return persona.rol === "coordinador" && persona.comisionId === comisionId;
+  }
+
+  // Todas las comisiones donde la persona puede publicar comunicados/enlaces/
+  // eventos "de comisión" — la lidera, o coordina algún comando ahí dentro.
+  function comisionesConAlcance(persona) {
+    var ids = {};
+    (persona.comisionesLideradas || (persona.rol === "lider" && persona.comisionId ? [persona.comisionId] : [])).forEach(function (id) { ids[id] = true; });
+    (persona.membresias || (persona.rol === "coordinador" && persona.comisionId ? [{ comisionId: persona.comisionId, rol: "coordinador" }] : []))
+      .forEach(function (m) { if (m.rol === "coordinador") ids[m.comisionId] = true; });
+    return Object.keys(ids);
+  }
 
   var NAV = [
     { route: "dashboard",       label: "Inicio",         roles: ["direccion","lider","coordinador","miembro","colaborador"] },
@@ -39,34 +89,34 @@
   function canAccessSubgrupo(persona, comisionIdDelSubgrupo) {
     if (persona.rol === "direccion") return true;
     if (persona.rol === "lider" || persona.rol === "coordinador" || persona.rol === "miembro") {
-      return persona.comisionId === comisionIdDelSubgrupo;
+      return lideraComision(persona, comisionIdDelSubgrupo) || tieneMembresiaEnComision(persona, comisionIdDelSubgrupo);
     }
     return false; // colaborador: sin acceso a comandos operativos
   }
 
   function canManageComision(persona, comisionId) {
-    return persona.rol === "direccion" || (persona.rol === "lider" && persona.comisionId === comisionId);
+    return persona.rol === "direccion" || lideraComision(persona, comisionId);
   }
 
   function canManageSubgrupo(persona, comisionId, subgrupoId) {
-    return canManageComision(persona, comisionId) || (persona.rol === "coordinador" && persona.subgrupoId === subgrupoId);
+    if (canManageComision(persona, comisionId)) return true;
+    var m = membresiaEnComando(persona, subgrupoId);
+    return !!m && m.rol === "coordinador";
   }
 
   // Modificar el ESTADO de una tarea puntual.
   function canEditTask(persona, tarea, comisionId, subgrupoId) {
     if (persona.rol === "direccion") return true;
-    if (persona.rol === "lider") return persona.comisionId === comisionId;
-    if (persona.rol === "coordinador") return persona.subgrupoId === subgrupoId;
+    if (lideraComision(persona, comisionId)) return true;
+    var m = membresiaEnComando(persona, subgrupoId);
+    if (!m) return false; // no pertenece a ESE comando puntual (colaborador, u otro comando distinto)
+    if (m.rol === "coordinador") return true;
     // Una tarea puede tener VARIAS personas asignadas (tarea.asignados =
     // [{id,nombre}]); un Miembro puede editar el estado si aparece en esa
     // lista. Se compara por id (modo real) y por nombre como respaldo
     // (datos de ejemplo del modo demo, que no tienen uuid real).
-    if (persona.rol === "miembro") {
-      if (persona.subgrupoId !== subgrupoId) return false;
-      var lista = tarea.asignados || [];
-      return lista.some(function (a) { return a.id === persona.id || a.nombre === persona.nombre; });
-    }
-    return false; // colaborador: solo lectura, y ni siquiera llega aquí (no tiene subgrupoId)
+    var lista = tarea.asignados || [];
+    return lista.some(function (a) { return a.id === persona.id || a.nombre === persona.nombre; });
   }
 
   function canPostComunicado(persona) {
@@ -83,12 +133,12 @@
   // comunicado/enlace/evento no se podía corregir ni borrar nunca.
   function canManageComunicado(persona, item) {
     if (persona.rol === "direccion") return true;
-    return persona.rol === "lider" && !!item.comisionId && persona.comisionId === item.comisionId;
+    return !!item.comisionId && lideraComision(persona, item.comisionId);
   }
   function canManageEnlaceOEvento(persona, item) {
     if (persona.rol === "direccion") return true;
-    if (!item.comisionId || persona.comisionId !== item.comisionId) return false;
-    return persona.rol === "lider" || persona.rol === "coordinador";
+    if (!item.comisionId) return false;
+    return lideraComision(persona, item.comisionId) || esCoordinadorEnComision(persona, item.comisionId);
   }
 
   // Foro de Ideas: participar (crear tema, comentar, apoyar) está abierto
@@ -117,10 +167,33 @@
     return persona.rol === "direccion" || (comentario && comentario.autorId === persona.id);
   }
 
+  // Ids de TODAS las comisiones a las que la persona tiene algún acceso
+  // (la lidera, o tiene una membresía de cualquier rol en un comando suyo).
+  // Úsalo para filtrar listas (Tareas, Calendario, Comunicados) en vez de
+  // comparar contra el único persona.comisionId "principal".
+  function misComisionIds(persona) {
+    if (persona.rol === "direccion") return null; // null = sin filtro, ve todo
+    var ids = {};
+    (persona.comisionesLideradas || (persona.comisionId ? [persona.comisionId] : [])).forEach(function (id) { ids[id] = true; });
+    (persona.membresias || (persona.comisionId ? [{ comisionId: persona.comisionId }] : [])).forEach(function (m) { if (m.comisionId) ids[m.comisionId] = true; });
+    return Object.keys(ids);
+  }
+
+  // Ids de TODOS los comandos donde la persona tiene membresía (cualquier
+  // rol). Úsalo para filtrar tareas por "mis comandos" en vez de comparar
+  // contra el único persona.subgrupoId "principal".
+  function misComandoIds(persona) {
+    if (persona.membresias) return persona.membresias.map(function (m) { return m.comandoId; });
+    return persona.subgrupoId ? [persona.subgrupoId] : [];
+  }
+
   global.NG_PERMS = {
     NAV: NAV,
     canAccess: canAccess,
     canAccessSubgrupo: canAccessSubgrupo,
+    misComisionIds: misComisionIds,
+    misComandoIds: misComandoIds,
+    comisionesConAlcance: comisionesConAlcance,
     canManageComision: canManageComision,
     canManageSubgrupo: canManageSubgrupo,
     canEditTask: canEditTask,

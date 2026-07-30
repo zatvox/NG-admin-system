@@ -1,0 +1,15 @@
+{
+  "name": "invitacion-masiva-ng",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Script local (no forma parte de la app desplegada) para invitar en lote desde un Excel usando el Admin API de Supabase.",
+  "main": "invitar.js",
+  "scripts": {
+    "invitar": "node invitar.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "xlsx": "^0.18.5"
+  }
+}

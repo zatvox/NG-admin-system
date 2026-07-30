@@ -67,7 +67,15 @@
           <div class="topbar-panel" id="topbar-notif-panel"></div>
         </div>
 
-        <a class="chip chip-context" id="topbar-context" href="#/comisiones" style="display:none;"></a>
+        <!-- (2026-07-30) Antes era un <a> que llevaba a UNA comisión/comando
+             (tu "principal"). Con multi-comisión/multi-comando, se volvió un
+             desplegable de solo lectura: el chip resume ("2 pertenencias"),
+             y el panel lista TODAS tus comisiones lideradas y comandos, sin
+             navegar a ningún lado — solo para consultar en qué estás. -->
+        <div class="topbar-dropdown" id="topbar-context-wrap" style="display:none;">
+          <button class="chip chip-context" id="topbar-context" type="button"></button>
+          <div class="topbar-panel" id="topbar-context-panel"></div>
+        </div>
 
         <!-- Solo visible en modo demo: cambia de perfil sin credenciales -->
         <div class="persona-switch" id="persona-switch" style="display:none;">
