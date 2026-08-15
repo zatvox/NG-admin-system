@@ -361,6 +361,69 @@
   function rowKV(k, v) { return el("div", { class: "toggle-row" }, [el("span", { style: "color:var(--text-soft);" }, [k]), el("span", { style: "font-weight:600;color:var(--ink);" }, [v])]); }
   function actionBtn(label, onClick) { var b = el("button", { class: "btn btn-accent", type: "button" }, [label]); b.addEventListener("click", onClick); return b; }
 
+  // (2026-07-30) Filtro por comisiones reutilizado en Comunicados/Calendario/
+  // Enlaces: chips clicleables (multi-selección) + "Todos"/"Limpiar", en vez
+  // de un <select> de una sola opción. Con NINGÚN chip activo se muestra
+  // TODO sin filtrar (mismo resultado visual que "Todos", pero ninguno
+  // queda marcado como activo — es el estado inicial). `onChange(seleccion)`
+  // se llama cada vez que cambia; `seleccion` es un objeto { key: true } con
+  // "__general__" para el chip de alcance general y el id de cada comisión.
+  function comisionFilterBar(comisiones, opts) {
+    opts = opts || {};
+    var incluirGeneral = opts.incluirGeneral !== false;
+    var seleccion = {};
+    var wrap = el("div", { class: "toolbar", style: "flex-wrap:wrap;align-items:center;gap:8px;" });
+    var chips = [];
+
+    function pintar() {
+      chips.forEach(function (c) {
+        if (seleccion[c._key]) c.classList.add("chip-active"); else c.classList.remove("chip-active");
+      });
+    }
+    function toggle(key) {
+      if (seleccion[key]) delete seleccion[key]; else seleccion[key] = true;
+      pintar();
+      if (opts.onChange) opts.onChange(seleccion);
+    }
+    function crearChip(label, key) {
+      var c = el("span", { class: "chip filter-chip" }, [label]);
+      c._key = key;
+      c.addEventListener("click", function () { toggle(key); });
+      chips.push(c);
+      wrap.appendChild(c);
+      return c;
+    }
+
+    if (incluirGeneral) crearChip("General", "__general__");
+    comisiones.forEach(function (c) { crearChip(c.nombre, c.id); });
+
+    var todosBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;" }, ["Todos"]);
+    todosBtn.addEventListener("click", function () {
+      seleccion = {};
+      chips.forEach(function (c) { seleccion[c._key] = true; });
+      pintar();
+      if (opts.onChange) opts.onChange(seleccion);
+    });
+    var limpiarBtn = el("button", { type: "button", class: "btn btn-ghost", style: "font-size:11.5px;padding:5px 10px;" }, ["Limpiar"]);
+    limpiarBtn.addEventListener("click", function () {
+      seleccion = {};
+      pintar();
+      if (opts.onChange) opts.onChange(seleccion);
+    });
+    wrap.appendChild(todosBtn);
+    wrap.appendChild(limpiarBtn);
+
+    return {
+      el: wrap,
+      // true si el ítem (con esa comisionId, o null si es general) pasa el
+      // filtro actual — sin nada seleccionado, todo pasa.
+      pasaFiltro: function (comisionId) {
+        if (!Object.keys(seleccion).length) return true;
+        return comisionId ? !!seleccion[comisionId] : !!seleccion["__general__"];
+      }
+    };
+  }
+
   global.NG_SHARED = {
     ESTADO_LABEL: ESTADO_LABEL, sum: sum, kpi: kpi,
     getComision: getComision, getSubgrupo: getSubgrupo, allTareas: allTareas,
@@ -369,6 +432,7 @@
     taskCard: taskCard, kanbanBoard: kanbanBoard,
     comunicadoCard: comunicadoCard, enlaceCard: enlaceCard,
     rowKV: rowKV, actionBtn: actionBtn,
-    kebabMenu: kebabMenu, gestionRow: gestionRow
+    kebabMenu: kebabMenu, gestionRow: gestionRow,
+    comisionFilterBar: comisionFilterBar
   };
 })(window);

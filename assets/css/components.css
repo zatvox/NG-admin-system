@@ -85,6 +85,12 @@
   }
   .chip .dot{width:6px;height:6px;margin-right:2px;}
 
+  /* (2026-07-30) Chip de filtro clicleable (comisionFilterBar en shared.js) —
+     variante de .chip con estado activo/inactivo. */
+  .filter-chip{cursor:pointer;user-select:none;border:1px solid transparent;transition:background .12s ease;}
+  .filter-chip:hover{background:var(--border);}
+  .filter-chip.chip-active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
   .badge-estado{padding:3px 9px;border-radius:100px;font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
   .badge-pendiente{background:#EEF0F4;color:var(--text-soft);}
   .badge-en_curso{background:#FCF1D7;color:var(--warn);}

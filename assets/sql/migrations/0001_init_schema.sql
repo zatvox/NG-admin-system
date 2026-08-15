@@ -240,6 +240,26 @@ create table if not exists foro_votos (
 comment on table foro_votos is '"Apoyo" a un comentario/propuesta puntual — mide qué tanto consenso junta cada idea dentro del hilo.';
 
 -- ---------------------------------------------------------------------
+-- 8.2 FLYERS — piezas gráficas de la landing pública (index.html): lo
+--     primero que ve cualquiera con cuenta que todavía no fue aprobada
+--     por un Líder (rol "pendiente"), junto con fundadores (configuracion)
+--     y eventos/comunicados alcance='general'. Gestión exclusiva de
+--     Dirección (ver rls-policies.sql).
+-- ---------------------------------------------------------------------
+create table if not exists flyers (
+  id           uuid primary key default gen_random_uuid(),
+  titulo       text not null,
+  descripcion  text,
+  imagen_url   text not null, -- sube la imagen al bucket "flyers" en Supabase Storage y pega el link público aquí
+  orden        integer not null default 0,
+  activo       boolean not null default true,
+  created_by   uuid references usuarios(id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_flyers_orden on flyers(orden);
+comment on table flyers is 'Piezas gráficas mostradas en la landing pública (index.html).';
+
+-- ---------------------------------------------------------------------
 -- 9. CONFIGURACION — parámetros de negocio editables por Dirección desde
 --    el módulo "Configuración" de la UI. Clave/valor en jsonb para no
 --    tener que migrar el esquema cada vez que se agrega un parámetro.

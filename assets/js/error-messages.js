@@ -11,6 +11,7 @@
   "use strict";
 
   var REGLAS = [
+    { test: /CUENTA_SUSPENDIDA/, titulo: "Cuenta suspendida", accion: "Comuníquese con administración." },
     { test: /PERFIL_NO_ENCONTRADO/, titulo: "Perfil no encontrado", accion: "Pide a Dirección que revise tu cuenta." },
     { test: /invalid login credentials/i, titulo: "Credenciales incorrectas", accion: "Revisa tu correo y contraseña." },
     { test: /email not confirmed/i, titulo: "Correo sin confirmar", accion: "Revisa tu bandeja y confirma tu correo." },

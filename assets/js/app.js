@@ -453,6 +453,11 @@
   document.addEventListener("DOMContentLoaded", function () {
     window.NG_AUTH.getSession().then(function (persona) {
       if (!persona) { window.location.href = "login.html"; return; }
+      // (2026-08-15) Una persona "pendiente" (sin aprobar todavía) no debe
+      // ver el shell del sistema (sidebar/comisiones/tareas) — se manda
+      // directo a la landing pública (index.html), que ya sabe mostrarle
+      // el aviso de "cuenta pendiente de aprobación".
+      if (persona.rol === "pendiente") { window.location.href = "index.html"; return; }
 
       setPersona(persona);
       wireTopbar();
@@ -484,7 +489,14 @@
       } else {
         window.NG_ROUTER.route();
       }
-    }).catch(function () {
+    }).catch(function (err) {
+      // (2026-08-15) Antes esto descartaba el error en silencio — pasaba
+      // con PERFIL_NO_ENCONTRADO, y ahora también puede pasar si a alguien
+      // lo suspenden a mitad de sesión (cargarPersonaReal ya cierra esa
+      // sesión y lanza CUENTA_SUSPENDIDA). Se manda el mensaje a
+      // login.html vía sessionStorage para que no quede una pantalla en
+      // blanco sin explicación.
+      try { sessionStorage.setItem("ng_login_error", window.NG_ERR.format(err)); } catch (e) {}
       window.location.href = "login.html";
     });
   });

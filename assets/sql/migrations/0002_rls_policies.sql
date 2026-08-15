@@ -23,6 +23,21 @@ returns boolean language sql stable security definer as $$
   select coalesce((select es_direccion from usuarios where id = p_uid), false);
 $$;
 
+-- (2026-07-31) Candado de aprobación: ¿esta cuenta ya fue aprobada por un
+-- líder ("activo")? Antes "estado" era 100% cosmético — ni siquiera
+-- "suspendido" bloqueaba nada — así que cualquier persona que validara su
+-- correo (incluida gente ajena al partido, en pruebas) entraba con permisos
+-- de Colaborador y podía autoenlistarse en un comando sin que nadie la
+-- aprobara. Ahora esta función es la que de verdad decide si alguien ve la
+-- estructura interna (comisiones/comandos/tareas/foro/enlaces) o solo la
+-- landing pública — Dirección siempre pasa, sin importar su "estado".
+create or replace function fn_esta_activo(p_uid uuid)
+returns boolean language sql stable security definer as $$
+  select fn_es_direccion(p_uid) or coalesce(
+    (select estado = 'activo' from usuarios where id = p_uid), false
+  );
+$$;
+
 -- ¿El usuario es Líder de esa comisión?
 create or replace function fn_es_lider(p_uid uuid, p_comision_id uuid)
 returns boolean language sql stable security definer as $$
@@ -123,6 +138,7 @@ alter table tarea_asignados enable row level security;
 alter table foro_temas       enable row level security;
 alter table foro_comentarios enable row level security;
 alter table foro_votos       enable row level security;
+alter table flyers           enable row level security;
 
 -- ---------------------------------------------------------------------
 -- QUITAR POLÍTICAS ANTERIORES (hace que este archivo se pueda volver a
@@ -167,6 +183,10 @@ drop policy if exists foro_temas_select       on foro_temas;
 drop policy if exists foro_temas_insert       on foro_temas;
 drop policy if exists foro_temas_update       on foro_temas;
 drop policy if exists foro_temas_delete       on foro_temas;
+drop policy if exists flyers_select           on flyers;
+drop policy if exists flyers_insert           on flyers;
+drop policy if exists flyers_update           on flyers;
+drop policy if exists flyers_delete           on flyers;
 drop policy if exists foro_comentarios_select on foro_comentarios;
 drop policy if exists foro_comentarios_insert on foro_comentarios;
 drop policy if exists foro_comentarios_update on foro_comentarios;
@@ -188,15 +208,51 @@ drop policy if exists foro_votos_delete       on foro_votos;
 -- Editar: solo su propia fila (perfil), nunca es_direccion ni estado
 --         (esos campos los cambia Dirección vía panel/soporte, no el propio usuario).
 -- ---------------------------------------------------------------------
+-- (2026-07-31) Antes CUALQUIER autenticado podía leer la tabla usuarios
+-- COMPLETA (nombre, correo, teléfono, DNI de todos) — no había Directorio
+-- todavía cuando se escribió esto. Ahora que el Directorio es el panel
+-- donde un Líder aprueba/suspende cuentas y necesita ver a TODOS
+-- (incluida la gente pendiente de aprobar, que por definición no comparte
+-- comando con nadie), se restringe a: tu propia fila (perfil/login),
+-- Dirección, cualquier Líder, o alguien con quien compartes comando (caso
+-- de uso original: nombres de compañeros de equipo en el tablero).
 create policy usuarios_select on usuarios for select using (
-  auth.uid() is not null
+  id = auth.uid()
+  or fn_es_direccion(auth.uid())
+  or fn_es_lider_de_alguna(auth.uid())
+  or fn_comparten_comando(auth.uid(), id)
 );
 
+-- (2026-07-31) Se agrega "fn_es_lider_de_alguna" — un Líder necesita poder
+-- cambiar el "estado" (aprobar de pendiente_activacion → activo, o
+-- suspender) de CUALQUIER usuario, no solo Dirección como antes. RLS por
+-- filas no puede restringir POR COLUMNA (que un Líder solo toque "estado"
+-- y nunca "es_direccion"), así que eso se refuerza aparte con un trigger
+-- (fn_proteger_es_direccion, ver abajo) que revierte cualquier intento de
+-- cambiar es_direccion desde alguien que no sea Dirección.
 create policy usuarios_update_propio on usuarios for update using (
-  id = auth.uid() or fn_es_direccion(auth.uid())
+  id = auth.uid() or fn_es_direccion(auth.uid()) or fn_es_lider_de_alguna(auth.uid())
 ) with check (
-  id = auth.uid() or fn_es_direccion(auth.uid())
+  id = auth.uid() or fn_es_direccion(auth.uid()) or fn_es_lider_de_alguna(auth.uid())
 );
+
+-- Refuerzo de columna: ni un Líder ni la propia persona pueden otorgarse
+-- (ni quitarse entre ellos) el rol de Dirección General editando su fila de
+-- "usuarios" — eso sigue siendo estrictamente manual, vía SQL de Dirección.
+create or replace function fn_proteger_es_direccion()
+returns trigger language plpgsql security definer as $$
+begin
+  if new.es_direccion is distinct from old.es_direccion and not fn_es_direccion(auth.uid()) then
+    new.es_direccion := old.es_direccion;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_proteger_es_direccion on usuarios;
+create trigger trg_proteger_es_direccion
+  before update on usuarios
+  for each row execute function fn_proteger_es_direccion();
 
 -- ---------------------------------------------------------------------
 -- COMISIONES — info general visible para todos los autenticados (la spec
@@ -204,7 +260,12 @@ create policy usuarios_update_propio on usuarios for update using (
 -- organización" aunque los comandos ajenos se vean deshabilitados).
 -- Editar: Dirección siempre; Líder solo su propia comisión (misión, etc.).
 -- ---------------------------------------------------------------------
-create policy comisiones_select on comisiones for select using (auth.uid() is not null);
+-- (2026-07-31) Antes cualquier autenticado veía esto (incluida gente
+-- pendiente de aprobar). Ahora hace falta fn_esta_activo — ver comentario
+-- de esa función más arriba.
+create policy comisiones_select on comisiones for select using (
+  auth.uid() is not null and fn_esta_activo(auth.uid())
+);
 
 create policy comisiones_update on comisiones for update using (
   fn_es_direccion(auth.uid()) or lider_id = auth.uid()
@@ -228,7 +289,7 @@ create policy comisiones_insert on comisiones for insert with check (
 -- Crear: Dirección, o Líder de esa comisión ("+ Crear comando operativo").
 -- ---------------------------------------------------------------------
 create policy comandos_select on comandos for select using (
-  auth.uid() is not null
+  auth.uid() is not null and fn_esta_activo(auth.uid())
 );
 
 create policy comandos_insert on comandos for insert with check (
@@ -252,7 +313,7 @@ create policy comandos_update on comandos for update using (
 --      puede agregar miembros a SU PROPIO comando).
 -- ---------------------------------------------------------------------
 create policy membresias_select on membresias for select using (
-  auth.uid() is not null
+  auth.uid() is not null and fn_esta_activo(auth.uid())
 );
 
 create policy membresias_insert on membresias for insert with check (
@@ -304,7 +365,7 @@ create policy membresias_delete on membresias for delete using (
 --      estado (ver tareas_update).
 -- ---------------------------------------------------------------------
 create policy tareas_select on tareas for select using (
-  auth.uid() is not null
+  auth.uid() is not null and fn_esta_activo(auth.uid())
 );
 
 create policy tareas_insert on tareas for insert with check (
@@ -378,10 +439,18 @@ create policy tarea_asignados_write on tarea_asignados for all using (
 --      comisión específica — mismo criterio de "ver todo" de arriba.
 -- Crear: Dirección, Líder, Coordinador (igual que en la UI del calendario).
 -- ---------------------------------------------------------------------
+-- (2026-07-31) "general" queda visible para cualquier autenticado (incluida
+-- gente pendiente de aprobar — son las "noticias" que se muestran en la
+-- landing pública). Lo de una comisión puntual sí exige estar aprobado.
 create policy eventos_select on eventos for select using (
-  auth.uid() is not null
+  auth.uid() is not null and (alcance = 'general' or fn_esta_activo(auth.uid()))
 );
 
+-- (2026-07-30) La rama "comision_id is null and fn_es_lider_de_alguna(...)"
+-- es nueva: antes SOLO Dirección podía publicar con alcance "general"
+-- (comision_id null) — un Líder únicamente podía publicar dentro de su
+-- propia comisión. Ahora cualquier Líder puede elegir "General" también,
+-- visible para toda la organización, igual que un comunicado de Dirección.
 create policy eventos_insert on eventos for insert with check (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and (
@@ -390,6 +459,7 @@ create policy eventos_insert on eventos for insert with check (
                     where m.usuario_id = auth.uid() and c.comision_id = eventos.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 -- (2026-07-27) update/delete: antes NO EXISTÍAN — un evento publicado por
@@ -403,6 +473,7 @@ create policy eventos_update on eventos for update using (
                     where m.usuario_id = auth.uid() and c.comision_id = eventos.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 ) with check (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and (
@@ -411,6 +482,7 @@ create policy eventos_update on eventos for update using (
                     where m.usuario_id = auth.uid() and c.comision_id = eventos.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 create policy eventos_delete on eventos for delete using (
@@ -421,6 +493,7 @@ create policy eventos_delete on eventos for delete using (
                     where m.usuario_id = auth.uid() and c.comision_id = eventos.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 -- ---------------------------------------------------------------------
@@ -428,28 +501,36 @@ create policy eventos_delete on eventos for delete using (
 -- Ver: (2026-07-25) cualquier autenticado, mismo criterio de "ver todo".
 -- Publicar: solo Dirección y Líder (la spec no da esta capacidad a Coordinador).
 -- ---------------------------------------------------------------------
+-- (2026-07-31) Mismo criterio que eventos_select: "general" es la noticia
+-- pública, visible aunque no estés aprobado todavía.
 create policy comunicados_select on comunicados for select using (
-  auth.uid() is not null
+  auth.uid() is not null and (alcance = 'general' or fn_esta_activo(auth.uid()))
 );
 
+-- (2026-07-30) Antes "alcance = 'general'" solo lo dejaba pasar a Dirección
+-- — ahora cualquier Líder también puede publicar "general" (visible a toda
+-- la organización), no solo dentro de su propia comisión.
 create policy comunicados_insert on comunicados for insert with check (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and fn_es_lider(auth.uid(), comision_id))
-  or (alcance = 'general' and fn_es_direccion(auth.uid()))
+  or (alcance = 'general' and fn_es_lider_de_alguna(auth.uid()))
 );
 
 -- (2026-07-27) update/delete: mismo alcance que insert.
 create policy comunicados_update on comunicados for update using (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and fn_es_lider(auth.uid(), comision_id))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 ) with check (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and fn_es_lider(auth.uid(), comision_id))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 create policy comunicados_delete on comunicados for delete using (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and fn_es_lider(auth.uid(), comision_id))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 -- ---------------------------------------------------------------------
@@ -460,9 +541,12 @@ create policy comunicados_delete on comunicados for delete using (
 -- Publicar: Dirección, Líder, Coordinador.
 -- ---------------------------------------------------------------------
 create policy enlaces_select on enlaces for select using (
-  auth.uid() is not null
+  auth.uid() is not null and fn_esta_activo(auth.uid())
 );
 
+-- (2026-07-30) Rama nueva: "comision_id is null and fn_es_lider_de_alguna"
+-- — un Coordinador NO puede publicar "general" (sigue atado a su comisión),
+-- solo Dirección o cualquier Líder pueden.
 create policy enlaces_insert on enlaces for insert with check (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and (
@@ -471,6 +555,7 @@ create policy enlaces_insert on enlaces for insert with check (
                     where m.usuario_id = auth.uid() and c.comision_id = enlaces.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 -- (2026-07-27) update/delete: mismo alcance que insert.
@@ -482,6 +567,7 @@ create policy enlaces_update on enlaces for update using (
                     where m.usuario_id = auth.uid() and c.comision_id = enlaces.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 ) with check (
   fn_es_direccion(auth.uid())
   or (comision_id is not null and (
@@ -490,6 +576,7 @@ create policy enlaces_update on enlaces for update using (
                     where m.usuario_id = auth.uid() and c.comision_id = enlaces.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 create policy enlaces_delete on enlaces for delete using (
@@ -500,6 +587,7 @@ create policy enlaces_delete on enlaces for delete using (
                     where m.usuario_id = auth.uid() and c.comision_id = enlaces.comision_id
                       and m.rol in ('coordinador','secretario'))
      ))
+  or (comision_id is null and fn_es_lider_de_alguna(auth.uid()))
 );
 
 -- ---------------------------------------------------------------------
@@ -531,7 +619,9 @@ create policy configuracion_write on configuracion for all using (
 -- para que la síntesis final tenga algo de curaduría y no cualquiera
 -- pueda "cerrar" la idea de otra persona a mitad de debate.
 -- ---------------------------------------------------------------------
-create policy foro_temas_select on foro_temas for select using (auth.uid() is not null);
+create policy foro_temas_select on foro_temas for select using (
+  auth.uid() is not null and fn_esta_activo(auth.uid())
+);
 
 create policy foro_temas_insert on foro_temas for insert with check (
   auth.uid() is not null and autor_id = auth.uid()
@@ -547,7 +637,9 @@ create policy foro_temas_delete on foro_temas for delete using (
   autor_id = auth.uid() or fn_es_direccion(auth.uid())
 );
 
-create policy foro_comentarios_select on foro_comentarios for select using (auth.uid() is not null);
+create policy foro_comentarios_select on foro_comentarios for select using (
+  auth.uid() is not null and fn_esta_activo(auth.uid())
+);
 
 create policy foro_comentarios_insert on foro_comentarios for insert with check (
   auth.uid() is not null and autor_id = auth.uid()
@@ -566,11 +658,30 @@ create policy foro_comentarios_delete on foro_comentarios for delete using (
   autor_id = auth.uid() or fn_es_direccion(auth.uid())
 );
 
-create policy foro_votos_select on foro_votos for select using (auth.uid() is not null);
+create policy foro_votos_select on foro_votos for select using (
+  auth.uid() is not null and fn_esta_activo(auth.uid())
+);
 
 create policy foro_votos_insert on foro_votos for insert with check (usuario_id = auth.uid());
 
 create policy foro_votos_delete on foro_votos for delete using (usuario_id = auth.uid());
+
+-- ---------------------------------------------------------------------
+-- FLYERS — landing pública (index.html). Ver: cualquier autenticado (así
+-- lo ve tanto quien está "pendiente" de aprobación como cualquier miembro
+-- ya activo) siempre que esté "activo=true"; Dirección además ve los
+-- inactivos (para poder revisarlos/republicarlos). Publicar: exclusivo de
+-- Dirección — es la cara pública de la organización.
+-- ---------------------------------------------------------------------
+create policy flyers_select on flyers for select using (
+  auth.uid() is not null and (activo or fn_es_direccion(auth.uid()))
+);
+
+create policy flyers_insert on flyers for insert with check (fn_es_direccion(auth.uid()));
+
+create policy flyers_update on flyers for update using (fn_es_direccion(auth.uid())) with check (fn_es_direccion(auth.uid()));
+
+create policy flyers_delete on flyers for delete using (fn_es_direccion(auth.uid()));
 
 -- ---------------------------------------------------------------------
 -- AUDITORÍA — solo lectura, y solo Dirección. Se llena por trigger

@@ -67,7 +67,7 @@
     { route: "comisiones",      label: "Comisiones",      roles: ["direccion","lider","coordinador","miembro","colaborador"] },
     { route: "tareas",          label: "Tareas",          roles: ["direccion","lider","coordinador","miembro"] },
     { route: "calendario",      label: "Calendario",      roles: ["direccion","lider","coordinador","miembro","colaborador"] },
-    { route: "directorio",      label: "Directorio",      roles: ["direccion","lider","coordinador"] },
+    { route: "directorio",      label: "Directorio",      roles: ["direccion","lider"] }, // (2026-08-15) Etapa 5: ya no es solo consulta — aquí se aprueban cuentas y se edita el estado de cualquier miembro, por eso se restringe a Líder/Dirección (antes incluía Coordinador).
     { route: "comunicaciones",  label: "Comunicados",     roles: ["direccion","lider","coordinador","miembro","colaborador"] },
     { route: "enlaces",         label: "Enlaces",         roles: ["direccion","lider","coordinador","miembro"] },
     { route: "foro",            label: "Foro de Ideas",   roles: ["direccion","lider","coordinador","miembro","colaborador"] },
@@ -131,13 +131,19 @@
   // exacto de las políticas *_update/*_delete en rls-policies.sql. Antes
   // no existían ni las políticas ni estos botones: una vez publicado, un
   // comunicado/enlace/evento no se podía corregir ni borrar nunca.
+  // (2026-07-30) item.comisionId null = "General" — antes solo Dirección
+  // podía tocarlo; ahora cualquier Líder también (espejo de la rama nueva
+  // "comision_id is null and fn_es_lider_de_alguna(...)" en rls-policies.sql,
+  // migración 0008). persona.rol === "lider" ya implica que lidera al menos
+  // una comisión (ver auth.js: rolGlobal solo es "lider" si esLider=true).
   function canManageComunicado(persona, item) {
     if (persona.rol === "direccion") return true;
-    return !!item.comisionId && lideraComision(persona, item.comisionId);
+    if (!item.comisionId) return persona.rol === "lider";
+    return lideraComision(persona, item.comisionId);
   }
   function canManageEnlaceOEvento(persona, item) {
     if (persona.rol === "direccion") return true;
-    if (!item.comisionId) return false;
+    if (!item.comisionId) return persona.rol === "lider";
     return lideraComision(persona, item.comisionId) || esCoordinadorEnComision(persona, item.comisionId);
   }
 

@@ -9,6 +9,18 @@
   var q = window.NG_DOM.q;
 
   document.addEventListener("DOMContentLoaded", function () {
+    // (2026-08-15) Si app.html (o index.html) mandó a alguien de vuelta
+    // acá por un error de sesión (ej. "cuenta suspendida"), el mensaje
+    // viaja en sessionStorage — se muestra una sola vez y se borra.
+    try {
+      var pendingErr = sessionStorage.getItem("ng_login_error");
+      if (pendingErr) {
+        sessionStorage.removeItem("ng_login_error");
+        var pendingBox = q("#login-error");
+        if (pendingBox) { pendingBox.textContent = pendingErr; pendingBox.style.display = "block"; }
+      }
+    } catch (e) {}
+
     var demoBanner = q("#demo-banner");
     var demoBlock = q("#demo-block");
     var realBlock = q("#real-block");

@@ -27,20 +27,24 @@
       return misComisiones.indexOf(c.comisionId) >= 0;
     }).sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; });
 
-    var toolbar = el("div", { class: "toolbar" });
-    var filter = el("select", {}, [el("option", { value: "" }, ["Todos"]), el("option", { value: "general" }, ["Solo generales"])]);
-    toolbar.appendChild(filter);
-    root.appendChild(toolbar);
+    // (2026-07-30) Chips por comisión (multi-selección) en vez del select de
+    // "Todos/Solo generales" — solo se listan las comisiones que de verdad
+    // aparecen en "visibles" (no tiene sentido un chip de una comisión de la
+    // que no puedes ver nada).
+    var comisionesConComunicados = {};
+    visibles.forEach(function (c) { if (c.comisionId) comisionesConComunicados[c.comisionId] = true; });
+    var chipsComisiones = comisiones.filter(function (c) { return comisionesConComunicados[c.id]; });
 
     var container = el("div", { class: "grid grid-cols-2" });
-    root.appendChild(container);
     function draw() {
       container.innerHTML = "";
-      var f = filter.value === "general" ? visibles.filter(function (c) { return c.alcance === "general"; }) : visibles;
+      var f = visibles.filter(function (c) { return barra.pasaFiltro(c.comisionId); });
       if (!f.length) { container.appendChild(el("div", { class: "empty-state" }, ["No hay comunicados para mostrar."])); return; }
       f.forEach(function (c) { container.appendChild(S.comunicadoCard(c, comisiones, p)); });
     }
-    filter.addEventListener("change", draw);
+    var barra = S.comisionFilterBar(chipsComisiones, { incluirGeneral: true, onChange: draw });
+    root.appendChild(barra.el);
+    root.appendChild(container);
     draw();
   }
 
@@ -57,25 +61,19 @@
       canPost ? S.actionBtn("+ Nuevo enlace", function () { global.NG_openNuevoEnlaceModal(p, comisiones); }) : null
     ].filter(Boolean)));
 
-    var toolbar = el("div", { class: "toolbar" });
-    var filter = el("select", {});
-    filter.appendChild(el("option", { value: "" }, ["Todas las comisiones"]));
-    filter.appendChild(el("option", { value: "general" }, ["Solo generales"]));
-    comisiones.forEach(function (c) { filter.appendChild(el("option", { value: c.id }, [c.nombre])); });
-    toolbar.appendChild(filter);
-    root.appendChild(toolbar);
-
+    // (2026-07-30) Chips por comisión (multi-selección) en vez del select de
+    // una sola opción — Enlaces sigue siendo biblioteca abierta a todos, así
+    // que aquí sí se listan TODAS las comisiones (no solo las "mías").
     var container = el("div", { class: "grid grid-cols-2" });
-    root.appendChild(container);
     function draw() {
       container.innerHTML = "";
-      var f = enlaces;
-      if (filter.value === "general") f = f.filter(function (l) { return !l.comisionId; });
-      else if (filter.value) f = f.filter(function (l) { return l.comisionId === filter.value; });
+      var f = enlaces.filter(function (l) { return barra.pasaFiltro(l.comisionId); });
       if (!f.length) { container.appendChild(el("div", { class: "empty-state" }, ["No hay enlaces para mostrar."])); return; }
       f.slice().sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; }).forEach(function (l) { container.appendChild(S.enlaceCard(l, comisiones, p)); });
     }
-    filter.addEventListener("change", draw);
+    var barra = S.comisionFilterBar(comisiones, { incluirGeneral: true, onChange: draw });
+    root.appendChild(barra.el);
+    root.appendChild(container);
     draw();
   }
 

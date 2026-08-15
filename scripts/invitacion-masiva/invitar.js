@@ -3,7 +3,13 @@
  *
  * QUÉ HACE, POR CADA FILA:
  *   1. Lee nombre/correo/teléfono/DNI/región/distrito de la hoja indicada.
- *   2. Salta filas sin correo válido o con correo repetido (deja log).
+ *   2. Salta filas sin correo válido, con correo repetido EN EL ARCHIVO, o
+ *      con correo que YA existe en la tabla "usuarios" (consulta a Supabase
+ *      antes de invitar a nadie) — así puedes correr el mismo Excel varias
+ *      veces sin re-invitar a quien ya se invitó en una tanda anterior.
+ *      Esto es clave porque Brevo (gratis) solo manda 300 correos/día: se
+ *      piensa para correr en tandas diarias con --limite, retomando donde
+ *      quedó la tanda de ayer sin repetir a nadie.
  *   3. Llama a supabase.auth.admin.inviteUserByEmail(correo, {...}) —
  *      esto crea la cuenta YA en auth.users y dispara el correo de
  *      invitación (vía el SMTP de Brevo configurado en Supabase).
@@ -14,8 +20,9 @@
  *      Este/Sur), inserta la membresía como "miembro" de una vez. Si no
  *      hay coincidencia, la persona queda sin comando (se une ella
  *      misma después con "+ Enlistarse").
- *   6. Escribe dos CSV de resultado en ./resultados/ — uno de éxitos y
- *      uno de errores — para tener registro de qué pasó con cada fila.
+ *   6. Escribe 3 CSV de resultado en ./resultados/ — éxitos, errores y
+ *      descartadas (inválidas, duplicadas o ya invitadas antes) — para
+ *      tener registro de qué pasó con cada fila.
  *
  * REQUISITOS (una sola vez):
  *   cd scripts/invitacion-masiva
@@ -27,10 +34,19 @@
  *
  *   --archivo   ruta al Excel (obligatorio)
  *   --hoja      nombre exacto de la hoja (default: "Base Enriquecida")
- *   --limite    procesa solo las primeras N filas válidas (para pruebas).
- *               Sin este flag, procesa TODAS las filas del archivo.
+ *   --limite    procesa solo las primeras N filas NUEVAS (que no tengan ya
+ *               cuenta). Pensado para tandas diarias, ej. --limite 280
+ *               (deja margen bajo las 300/día gratis de Brevo). Sin este
+ *               flag, procesa TODAS las filas nuevas del archivo de una vez
+ *               — solo úsalo así si ya tienes SMTP sin ese límite.
  *   --sin-envio modo simulación: no invita a nadie, solo muestra qué
  *               haría con cada fila (para revisar antes de disparar).
+ *
+ * TANDAS DIARIAS (recomendado con Brevo gratis):
+ *   Día 1: node invitar.js --archivo ./base.xlsx --limite 280
+ *   Día 2: node invitar.js --archivo ./base.xlsx --limite 280   (mismo comando)
+ *   El script salta automáticamente a quien ya se invitó ayer — no hace
+ *   falta llevar la cuenta a mano ni cortar el Excel en pedazos.
  *
  * IMPORTANTE — SEGURIDAD:
  *   La SUPABASE_SERVICE_ROLE_KEY del .env puede hacer CUALQUIER cosa en
@@ -115,9 +131,11 @@ function normalizarFila(raw) {
 const RE_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---------------------------------------------------------------------
-// 3. Deduplicar por correo + filtrar filas inválidas
+// 3. Deduplicar por correo + filtrar filas inválidas (esto es solo dentro
+//    del archivo; el chequeo contra la base de datos va aparte, ver
+//    filtrarYaExistentes más abajo — necesita consultar Supabase).
 // ---------------------------------------------------------------------
-function prepararFilas(rawFilas, limite) {
+function prepararFilas(rawFilas) {
   const vistos = new Set();
   const validas = [];
   const descartadas = [];
@@ -135,8 +153,31 @@ function prepararFilas(rawFilas, limite) {
     vistos.add(f.correo);
     validas.push(f);
   });
-  const procesar = limite ? validas.slice(0, limite) : validas;
-  return { procesar, descartadas, totalValidas: validas.length };
+  return { validas, descartadas };
+}
+
+// ---------------------------------------------------------------------
+// 3.1 Quitar filas cuyo correo YA tiene cuenta en "usuarios" — así el
+//     mismo Excel se puede correr varios días seguidos (tandas por el
+//     límite de Brevo) sin re-invitar ni marcar error a quien ya entró.
+//     Se consulta en bloques de 200 correos para no mandar una URL enorme.
+// ---------------------------------------------------------------------
+async function filtrarYaExistentes(validas) {
+  const existentes = new Set();
+  const TAM_BLOQUE = 200;
+  for (let i = 0; i < validas.length; i += TAM_BLOQUE) {
+    const bloque = validas.slice(i, i + TAM_BLOQUE).map(function (f) { return f.correo; });
+    const { data, error } = await supabase.from("usuarios").select("email").in("email", bloque);
+    if (error) throw error;
+    (data || []).forEach(function (u) { existentes.add(String(u.email).toLowerCase()); });
+  }
+  const nuevas = [];
+  const yaExistian = [];
+  validas.forEach(function (f) {
+    if (existentes.has(f.correo)) yaExistian.push(Object.assign({}, f, { motivo: "ya tiene cuenta (invitado en una tanda anterior)" }));
+    else nuevas.push(f);
+  });
+  return { nuevas, yaExistian };
 }
 
 // ---------------------------------------------------------------------
@@ -192,12 +233,20 @@ async function main() {
     process.exit(1);
   }
   const rawFilas = leerFilas(args.archivo, args.hoja);
-  const { procesar, descartadas, totalValidas } = prepararFilas(rawFilas, args.limite);
+  const { validas, descartadas: descartadasArchivo } = prepararFilas(rawFilas);
 
   console.log("Filas leídas: " + rawFilas.length);
-  console.log("Filas válidas (correo ok, sin duplicar): " + totalValidas);
-  console.log("Descartadas: " + descartadas.length);
-  console.log("Se van a procesar: " + procesar.length + (args.limite ? " (límite aplicado)" : "") + (args.sinEnvio ? " — MODO SIMULACIÓN, no se invita a nadie" : ""));
+  console.log("Filas válidas (correo ok, sin duplicar en el archivo): " + validas.length);
+  console.log("Consultando cuáles ya tienen cuenta (tandas anteriores)...");
+  const { nuevas, yaExistian } = args.sinEnvio ? { nuevas: validas, yaExistian: [] } : await filtrarYaExistentes(validas);
+  console.log("Ya invitadas antes: " + yaExistian.length + " | Nuevas por invitar: " + nuevas.length);
+
+  const descartadas = descartadasArchivo.concat(yaExistian);
+  const procesar = args.limite ? nuevas.slice(0, args.limite) : nuevas;
+  const pendientesParaOtroDia = nuevas.length - procesar.length;
+
+  console.log("Se van a procesar ahora: " + procesar.length + (args.limite ? " (límite aplicado)" : "") + (args.sinEnvio ? " — MODO SIMULACIÓN, no se invita a nadie" : ""));
+  if (pendientesParaOtroDia > 0) console.log("Quedan " + pendientesParaOtroDia + " filas nuevas para una próxima tanda (vuelve a correr el mismo comando otro día).");
   console.log("");
 
   const comandosPorZona = await cargarComandosOrganizacion();

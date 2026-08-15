@@ -2,29 +2,188 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Nueva Generación — Sistema de Comisiones</title>
 <link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/variables.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/responsive.css">
 <!--
-  index.html es solo un enrutador de entrada, tal como pide el checklist
-  de entrega ("index.html funciona al abrir en el navegador"). No pinta
-  nada: revisa si hay sesión activa (real o de demo) y redirige a
-  app.html; si no hay sesión, redirige a login.html.
+  index.html — Etapa 4 (2026-08-15): deja de ser un simple redirect y se
+  convierte en el panel público de bienvenida ("estilo portal
+  universitario") que ve CUALQUIERA con cuenta creada pero todavía no
+  aprobada por un Líder (usuarios.estado != 'activo').
+
+  Flujo completo, resuelto en runtime por el <script> de abajo:
+    - Sin sesión                        -> redirige a login.html
+    - Sesión + persona.rol === 'pendiente' -> se queda acá, pinta la landing
+    - Sesión + ya aprobado (cualquier otro rol) -> redirige a app.html
+
+  Todo lo que se pinta acá (flyers, fundadores, eventos/comunicados
+  "general") ya viene filtrado por RLS server-side — ver migraciones 0009
+  y 0010. Aunque alguien manipule este HTML, no puede ver nada más.
 -->
-<style>body{background:#16213E;}</style>
+<style>
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg,#F4F5F9);}
+  #landing-loading{display:flex;align-items:center;justify-content:center;min-height:100vh;color:var(--text-faint);font-size:13px;}
+  #landing{display:none;max-width:960px;margin:0 auto;padding:28px 20px 60px;}
+  .landing-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px;}
+  .landing-brand{display:flex;flex-direction:column;}
+  .landing-brand .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--accent-ink,#B45309);text-transform:uppercase;}
+  .landing-brand h1{font-family:'Space Grotesk',sans-serif;font-size:22px;margin:2px 0 0;}
+  .pending-banner{background:#FCF1D7;color:var(--accent-ink,#8A5A00);border-radius:10px;padding:16px 18px;margin-bottom:26px;line-height:1.55;font-size:13.5px;}
+  .pending-banner strong{display:block;font-size:14.5px;margin-bottom:4px;}
+  .landing-section{margin-bottom:30px;}
+  .landing-section h2{font-size:15px;margin:0 0 12px;}
+  .fundadores-box{white-space:pre-wrap;line-height:1.6;font-size:13.5px;}
+  .noticia-item{border-bottom:1px solid var(--border,#E5E7EF);padding:12px 0;}
+  .noticia-item:last-child{border-bottom:none;}
+  .noticia-item .fecha{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);}
+  .noticia-item .titulo{font-weight:600;font-size:13.5px;margin-top:2px;}
+  .noticia-item .cuerpo{font-size:13px;color:var(--text-soft);margin-top:4px;}
+</style>
 </head>
 <body>
+
+<div id="landing-loading">Cargando…</div>
+
+<div id="landing">
+  <div class="landing-topbar">
+    <div class="landing-brand">
+      <span class="eyebrow" id="landing-eyebrow">NUEVA GENERACIÓN</span>
+      <h1 id="landing-title">Sistema de Comisiones</h1>
+    </div>
+    <button class="btn btn-secondary" id="landing-logout" type="button">Cerrar sesión</button>
+  </div>
+
+  <div class="pending-banner">
+    <strong>Tu cuenta está pendiente de aprobación</strong>
+    Ya validaste tu correo. Un Líder de comisión necesita aprobar tu ingreso antes de que puedas ver comisiones, tareas o el foro. Mientras tanto, esto es lo que cualquier visitante puede ver.
+  </div>
+
+  <div class="landing-section" id="landing-flyers-section" style="display:none;">
+    <h2>Flyers</h2>
+    <div id="landing-flyers" class="grid grid-cols-3"></div>
+  </div>
+
+  <div class="landing-section" id="landing-fundadores-section" style="display:none;">
+    <h2>Quiénes somos</h2>
+    <div class="card fundadores-box" id="landing-fundadores"></div>
+  </div>
+
+  <div class="landing-section">
+    <h2>Noticias y eventos generales</h2>
+    <div class="card" id="landing-noticias"></div>
+  </div>
+</div>
+
+<!-- Orden de carga: igual que app.html/login.html, más los data-modules que reutiliza esta landing -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="assets/js/config.js"></script>
 <script src="assets/js/supabase-client.js"></script>
 <script src="assets/js/ui/dom.js"></script>
+<script src="assets/js/error-messages.js"></script>
+<script src="assets/js/ui/toast.js"></script>
 <script src="assets/js/utils.js"></script>
 <script src="assets/js/data/mock-data.js"></script>
 <script src="assets/js/auth.js"></script>
+<script src="assets/js/data/eventos.js"></script>
+<script src="assets/js/data/comunicados.js"></script>
+<script src="assets/js/data/configuracion.js"></script>
+<script src="assets/js/data/flyers.js"></script>
 <script>
+(function () {
+  "use strict";
+  var q = window.NG_DOM.q, el = window.NG_DOM.el;
+
+  function irALogin(mensaje) {
+    if (mensaje) { try { sessionStorage.setItem("ng_login_error", mensaje); } catch (e) {} }
+    window.location.replace("login.html");
+  }
+
+  function fmtFecha(f) {
+    if (!f) return "";
+    var d = new Date(f + (f.length <= 10 ? "T00:00:00" : ""));
+    if (isNaN(d.getTime())) return f;
+    return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  async function pintarLanding(persona) {
+    var cfg = {};
+    try { cfg = await window.NG_DATA.configuracion.obtener(); } catch (e) { cfg = {}; }
+
+    if (cfg["organizacion.nombre"]) q("#landing-title").textContent = cfg["organizacion.nombre"];
+    if (cfg["organizacion.eslogan"]) q("#landing-eyebrow").textContent = cfg["organizacion.eslogan"];
+
+    if (cfg["organizacion.fundadores"]) {
+      q("#landing-fundadores").textContent = cfg["organizacion.fundadores"];
+      q("#landing-fundadores-section").style.display = "";
+    }
+
+    try {
+      var flyers = (window.NG_DATA.flyers ? await window.NG_DATA.flyers.listar() : []).filter(function (f) { return f.activo; });
+      if (flyers.length) {
+        var grid = q("#landing-flyers");
+        flyers.forEach(function (f) {
+          grid.appendChild(el("div", { class: "card" }, [
+            el("img", { src: f.imagenUrl, alt: f.titulo, style: "width:100%;border-radius:8px;margin-bottom:8px;object-fit:cover;max-height:160px;" }),
+            el("div", { style: "font-weight:600;font-size:13px;" }, [f.titulo]),
+            f.descripcion ? el("div", { style: "font-size:12px;color:var(--text-soft);margin-top:2px;" }, [f.descripcion]) : null
+          ].filter(Boolean)));
+        });
+        q("#landing-flyers-section").style.display = "";
+      }
+    } catch (e) { /* sin flyers, no es crítico para la landing */ }
+
+    try {
+      var noticiasBox = q("#landing-noticias");
+      var eventos = (await window.NG_DATA.eventos.listar()).filter(function (e) { return e.alcance === "general"; });
+      var comunicados = (await window.NG_DATA.comunicados.listar()).filter(function (c) { return c.alcance === "general"; });
+
+      var items = [];
+      eventos.forEach(function (e) { items.push({ tipo: "Evento", fecha: e.fecha, titulo: e.titulo, cuerpo: "" }); });
+      comunicados.forEach(function (c) { items.push({ tipo: "Comunicado", fecha: c.fecha, titulo: c.titulo, cuerpo: c.cuerpo }); });
+      items.sort(function (a, b) { return (b.fecha || "").localeCompare(a.fecha || ""); });
+
+      if (!items.length) {
+        noticiasBox.appendChild(el("div", { class: "empty-state" }, ["Todavía no hay noticias generales publicadas."]));
+      } else {
+        items.forEach(function (it) {
+          noticiasBox.appendChild(el("div", { class: "noticia-item" }, [
+            el("div", { class: "fecha" }, [it.tipo.toUpperCase() + (it.fecha ? " · " + fmtFecha(it.fecha) : "")]),
+            el("div", { class: "titulo" }, [it.titulo]),
+            it.cuerpo ? el("div", { class: "cuerpo" }, [it.cuerpo]) : null
+          ].filter(Boolean)));
+        });
+      }
+    } catch (e) {
+      q("#landing-noticias").appendChild(el("div", { class: "empty-state" }, ["No se pudieron cargar las noticias generales."]));
+    }
+
+    q("#landing-logout").addEventListener("click", function () {
+      window.NG_AUTH.logout().finally(function () { window.location.replace("login.html"); });
+    });
+
+    q("#landing-loading").style.display = "none";
+    q("#landing").style.display = "";
+  }
+
   window.NG_AUTH.getSession()
-    .then(function (persona) { window.location.replace(persona ? "app.html" : "login.html"); })
-    .catch(function () { window.location.replace("login.html"); });
+    .then(function (persona) {
+      if (!persona) { window.location.replace("login.html"); return; }
+      if (persona.rol !== "pendiente") { window.location.replace("app.html"); return; }
+      pintarLanding(persona);
+    })
+    .catch(function (err) {
+      irALogin(window.NG_ERR ? window.NG_ERR.format(err) : (err && err.message));
+    });
+})();
 </script>
 </body>
 </html>

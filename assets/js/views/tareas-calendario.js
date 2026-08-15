@@ -101,6 +101,15 @@
       return misComisiones.indexOf(e.comisionId) >= 0;
     });
 
+    // (2026-07-30) Chips por comisión (multi-selección) para acotar el
+    // calendario — solo se listan las comisiones presentes en lo que ya
+    // puedes ver (visibleEventos), igual criterio que en Comunicados.
+    var comisionesConEventos = {};
+    visibleEventos.forEach(function (e) { if (e.comisionId) comisionesConEventos[e.comisionId] = true; });
+    var chipsComisionesCal = comisiones.filter(function (c) { return comisionesConEventos[c.id]; });
+    var barra = S.comisionFilterBar(chipsComisionesCal, { incluirGeneral: true, onChange: function () { draw(); } });
+    root.appendChild(barra.el);
+
     var calWrap = el("div", { class: "card cal-card" });
     var head = el("div", { class: "cal-head" });
     var left = el("div", { class: "cal-head-left" });
@@ -128,6 +137,7 @@
 
     function draw() {
       var st = global.NG_STATE, today = st.today;
+      var eventosFiltrados = visibleEventos.filter(function (e) { return barra.pasaFiltro(e.comisionId); });
       monthLabel.textContent = U.MESES[st.calMonth][0].toUpperCase() + U.MESES[st.calMonth].slice(1) + " " + st.calYear;
       grid.innerHTML = "";
 
@@ -155,7 +165,7 @@
         var cell = el("div", { class: "cal-cell" + (isToday ? " today" : "") + (otherMonth ? " other-month" : "") }, [
           el("div", { class: "cal-daynum-row" }, [el("div", { class: "cal-daynum" }, [String(dayNum)])])
         ]);
-        var dayEvents = visibleEventos.filter(function (e) { return e.fecha === iso; });
+        var dayEvents = eventosFiltrados.filter(function (e) { return e.fecha === iso; });
         var maxShow = 3;
         dayEvents.slice(0, maxShow).forEach(function (e) {
           var c = e.comisionId ? S.getComision(comisiones, e.comisionId) : null;
@@ -176,7 +186,7 @@
 
       listWrap.innerHTML = "";
       listWrap.appendChild(el("div", { class: "section-title" }, ["Próximos eventos"]));
-      var upcoming = visibleEventos.filter(function (e) { return U.diasRestantes(e.fecha, today) >= 0; });
+      var upcoming = eventosFiltrados.filter(function (e) { return U.diasRestantes(e.fecha, today) >= 0; });
       listWrap.appendChild(S.eventListSection(upcoming, comisiones, p));
     }
     prev.addEventListener("click", function () { global.NG_STATE.calMonth--; if (global.NG_STATE.calMonth < 0) { global.NG_STATE.calMonth = 11; global.NG_STATE.calYear--; } draw(); });

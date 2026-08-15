@@ -15,6 +15,7 @@
   var CAMPOS = [
     { clave: "organizacion.nombre", label: "Nombre de la organización", tipo: "text", grupo: "Identidad" },
     { clave: "organizacion.eslogan", label: "Eslogan / subtítulo", tipo: "text", grupo: "Identidad" },
+    { clave: "organizacion.fundadores", label: "Fundadores (se muestra en la landing pública, index.html)", tipo: "textarea", grupo: "Identidad" },
     { clave: "marca.color_primario", label: "Color primario (sidebar, botones)", tipo: "color", grupo: "Identidad" },
     { clave: "marca.color_acento", label: "Color de acento (destacados, hoy en calendario)", tipo: "color", grupo: "Identidad" },
     { clave: "negocio.dias_aviso_vencimiento", label: "Días de aviso antes de que una tarea venza", tipo: "number", grupo: "Parámetros de negocio" },
@@ -67,6 +68,9 @@
           return; // el toggle ya trae su propio label, no dupliques el field genérico
         } else if (campo.tipo === "color") {
           input = el("input", { type: "color", value: valores[campo.clave] || "#16213E", style: "height:40px;padding:4px;" });
+        } else if (campo.tipo === "textarea") {
+          input = el("textarea", { rows: "3", style: "width:100%;" });
+          input.value = valores[campo.clave] != null ? valores[campo.clave] : "";
         } else {
           input = el("input", { type: campo.tipo === "number" ? "text" : "text", value: String(valores[campo.clave] != null ? valores[campo.clave] : "") });
         }
@@ -112,6 +116,51 @@
     var comisiones = await global.NG_DATA.comisiones.listar();
     root.appendChild(el("div", { class: "section-title" }, ["Comisiones y líderes actuales"]));
     root.appendChild(tablaComisiones(comisiones));
+
+    // (2026-08-15) Flyers de la landing pública (index.html) — lo primero
+    // que ve cualquiera con cuenta pendiente de aprobación.
+    await pintarFlyers(root);
+  }
+
+  async function pintarFlyers(root) {
+    root.appendChild(el("div", { class: "view-head", style: "margin-top:26px;" }, [
+      el("div", {}, [
+        el("h1", { style: "font-size:19px;" }, ["Flyers de la landing pública"]),
+        el("p", {}, ['Se muestran en index.html — lo primero que ve cualquiera con cuenta pendiente de aprobación.'])
+      ]),
+      S.actionBtn("+ Nuevo flyer", function () { global.NG_openNuevoFlyerModal(); })
+    ]));
+
+    if (!global.NG_DB) {
+      root.appendChild(el("div", { class: "empty-state" }, ["Los flyers requieren Supabase conectado."]));
+      return;
+    }
+
+    var flyers = await global.NG_DATA.flyers.listar();
+    if (!flyers.length) {
+      root.appendChild(el("div", { class: "empty-state" }, ["Todavía no hay flyers publicados."]));
+      return;
+    }
+
+    var grid = el("div", { class: "grid grid-cols-3" });
+    flyers.forEach(function (f) {
+      var card = el("div", { class: "card" }, [
+        el("img", { src: f.imagenUrl, alt: f.titulo, style: "width:100%;border-radius:8px;margin-bottom:8px;object-fit:cover;max-height:140px;" }),
+        el("div", { style: "font-weight:600;font-size:13px;" }, [f.titulo]),
+        el("div", { style: "font-size:11.5px;color:var(--text-faint);margin-top:2px;" }, [f.activo ? "Activo" : "Inactivo · oculto en la landing"])
+      ]);
+      card.appendChild(S.gestionRow(
+        function () { global.NG_openEditarFlyerModal(f); },
+        function () {
+          if (!window.confirm('¿Eliminar el flyer "' + f.titulo + '"?')) return;
+          global.NG_DATA.flyers.eliminar(f.id)
+            .then(function () { global.NG_TOAST.show("Flyer eliminado.", "success"); global.NG_ROUTER.route(); })
+            .catch(function (err) { global.NG_TOAST.show(global.NG_ERR.format(err), "error"); });
+        }
+      ));
+      grid.appendChild(card);
+    });
+    root.appendChild(grid);
   }
 
   function tablaComisiones(comisiones) {

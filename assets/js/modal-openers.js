@@ -16,12 +16,17 @@
   // la vez, así que se listan TODAS donde tiene alcance para publicar (ver
   // NG_PERMS.comisionesConAlcance, espejo de a quién dejan las políticas
   // *_insert de comunicados/enlaces/eventos).
+  // (2026-07-30) "General" ahora también es una opción para cualquier Líder
+  // (antes exclusiva de Dirección) — espejo de la rama nueva en las
+  // políticas *_insert (migración 0008: "comision_id is null and
+  // fn_es_lider_de_alguna(...)"). Un Coordinador sigue sin poder elegirla.
   function scopeSelectOptions(persona, comisiones) {
     var opts = [];
     if (persona.rol === "direccion") {
       opts.push({ value: "", label: "General (toda la organización)" });
       comisiones.forEach(function (c) { opts.push({ value: c.id, label: c.nombre }); });
     } else {
+      if (persona.rol === "lider") opts.push({ value: "", label: "General (toda la organización)" });
       var ids = global.NG_PERMS.comisionesConAlcance(persona);
       comisiones.filter(function (c) { return ids.indexOf(c.id) >= 0; }).forEach(function (c) { opts.push({ value: c.id, label: c.nombre }); });
     }
@@ -300,6 +305,39 @@
         { name: "alcance", label: "Comisión", type: "select", options: scopeSelectOptions(persona, comisiones), value: item.comisionId || "" }
       ],
       onSave: function (v) { return global.NG_DATA.enlaces.actualizar(item.id, v); }
+    });
+  };
+
+  // (2026-08-15) Flyers de la landing pública (index.html), exclusivo de
+  // Dirección (ver rls-policies.sql). Todavía no hay botón de "subir
+  // imagen" en la app — la imagen se sube a mano al bucket "flyers" de
+  // Supabase Storage y aquí se pega el link público (ver migración 0010).
+  global.NG_openNuevoFlyerModal = function () {
+    global.NG_MODAL.openForm({
+      title: "Nuevo flyer",
+      entityLabel: "Flyer",
+      fields: [
+        { name: "titulo", label: "Título", type: "text", required: true, placeholder: "Ej. Convocatoria abierta a simpatizantes" },
+        { name: "imagenUrl", label: "URL de la imagen", type: "url", required: true, placeholder: "https://…", hint: "Sube la imagen al bucket \"flyers\" en Supabase Storage y pega aquí el link público." },
+        { name: "descripcion", label: "Descripción (opcional)", type: "textarea" },
+        { name: "orden", label: "Orden (menor = aparece primero)", type: "text", value: "0" }
+      ],
+      onSave: function (v) { return global.NG_DATA.flyers.crear(v); }
+    });
+  };
+
+  global.NG_openEditarFlyerModal = function (f) {
+    global.NG_MODAL.openForm({
+      title: "Editar flyer",
+      entityLabel: "Flyer",
+      fields: [
+        { name: "titulo", label: "Título", type: "text", required: true, value: f.titulo },
+        { name: "imagenUrl", label: "URL de la imagen", type: "url", required: true, value: f.imagenUrl },
+        { name: "descripcion", label: "Descripción (opcional)", type: "textarea", value: f.descripcion || "" },
+        { name: "orden", label: "Orden (menor = aparece primero)", type: "text", value: String(f.orden || 0) },
+        { name: "activo", label: "Visible en la landing", type: "select", options: [{ value: "1", label: "Sí, activo" }, { value: "", label: "No, oculto" }], value: f.activo ? "1" : "" }
+      ],
+      onSave: function (v) { return global.NG_DATA.flyers.actualizar(f.id, Object.assign({}, v, { activo: v.activo === "1" })); }
     });
   };
 

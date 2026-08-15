@@ -74,10 +74,30 @@
       err.code = "PERFIL_NO_ENCONTRADO";
       throw err;
     }
-    var base = { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono };
+
+    // (2026-08-15) "estado" ya deja de ser cosmético — ver migración 0009
+    // (fn_esta_activo en rls-policies.sql). Una cuenta suspendida se
+    // rechaza acá mismo, cerrando la sesión, ANTES de que llegue a ver
+    // nada — con mensaje explícito (ver error-messages.js / auth-login.js).
+    if (usuario.estado === "suspendido" && !usuario.es_direccion) {
+      await db.auth.signOut();
+      var errSusp = new Error("Tu cuenta fue suspendida.");
+      errSusp.code = "CUENTA_SUSPENDIDA";
+      throw errSusp;
+    }
+
+    var base = { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, estado: usuario.estado };
 
     if (usuario.es_direccion) {
       return Object.assign({}, base, { rol: "direccion", comisionId: null, subgrupoId: null, membresias: [], comisionesLideradas: [] });
+    }
+
+    // (2026-08-15) Todavía no la aprueba ningún Líder — solo puede ver la
+    // landing pública (index.html: flyers, fundadores, eventos/comunicados
+    // "general"). No hace falta ni consultar comisiones/membresías: con
+    // este estado, RLS las bloquearía de todos modos (migración 0009).
+    if (usuario.estado !== "activo") {
+      return Object.assign({}, base, { rol: "pendiente", comisionId: null, subgrupoId: null, membresias: [], comisionesLideradas: [] });
     }
 
     // ¿Lidera alguna(s) comisión(es)? (normalmente 1, pero no se asume).
