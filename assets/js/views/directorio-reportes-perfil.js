@@ -17,6 +17,7 @@
   var ESTADO_OPTIONS_DIR = [
     { value: "activo", label: "Activo" },
     { value: "pendiente_activacion", label: "Pendiente de aprobación" },
+    { value: "desaprobado", label: "Desaprobado" },
     { value: "suspendido", label: "Suspendido" }
   ];
   var ESTADO_LABEL_DIR = {};
@@ -34,11 +35,33 @@
       ])
     ]));
 
-    root.appendChild(el("div", { class: "section-title" }, ["Pendientes de aprobación"]));
+    // (2026-08-16) Etapa 6: "Pendientes" y "Desaprobados" comparten la
+    // misma tarjeta, alternados con un tab — así el Líder no tiene que
+    // scrollear por dos secciones largas para encontrar a alguien.
+    var tabsRow = el("div", { class: "section-title", style: "display:flex;align-items:center;gap:10px;" }, [
+      el("span", {}, ["Aprobación de cuentas"])
+    ]);
+    var tabPendientes = el("button", { class: "filter-chip chip-active", type: "button" }, ["Pendientes de aprobación"]);
+    var tabDesaprobados = el("button", { class: "filter-chip", type: "button" }, ["Desaprobados"]);
+    tabsRow.appendChild(tabPendientes);
+    tabsRow.appendChild(tabDesaprobados);
+    root.appendChild(tabsRow);
+
     var pendSearch = el("input", { type: "text", placeholder: "Buscar por nombre o correo…", style: "width:280px;margin-bottom:12px;" });
     root.appendChild(pendSearch);
     var pendWrap = el("div", { class: "card" });
     root.appendChild(pendWrap);
+
+    var tabActivo = "pendientes";
+    function cambiarTab(nuevo) {
+      tabActivo = nuevo;
+      tabPendientes.classList.toggle("chip-active", nuevo === "pendientes");
+      tabDesaprobados.classList.toggle("chip-active", nuevo === "desaprobados");
+      pendSearch.placeholder = nuevo === "pendientes" ? "Buscar por nombre o correo…" : "Buscar desaprobados por nombre o correo…";
+      pintarPendientes();
+    }
+    tabPendientes.addEventListener("click", function () { cambiarTab("pendientes"); });
+    tabDesaprobados.addEventListener("click", function () { cambiarTab("desaprobados"); });
 
     root.appendChild(el("div", { class: "section-title", style: "margin-top:26px;" }, ["Todos los miembros"]));
     var toolbar = el("div", { class: "toolbar" });
@@ -75,38 +98,81 @@
       return sel;
     }
 
+    function nombreDe(id) {
+      var u = usuarios.filter(function (x) { return x.id === id; })[0];
+      return u ? u.nombre : "alguien";
+    }
+
+    function aprobar(u, btn, mensajeExito) {
+      btn.disabled = true; btn.textContent = "Aprobando…";
+      global.NG_DATA.usuarios.actualizarUsuarioAdmin(u.id, { estado: "activo" })
+        .then(function () {
+          global.NG_TOAST.show(mensajeExito || (u.nombre + " fue aprobado como miembro."), "success");
+          u.estado = "activo"; u.motivo_rechazo = null; u.rechazado_por = null;
+          pintarTodo();
+        })
+        .catch(function (err) {
+          btn.disabled = false; btn.textContent = "Aprobar";
+          global.NG_TOAST.show(global.NG_ERR.format(err), "error");
+        });
+    }
+
+    function desaprobar(u, btn) {
+      // (2026-08-16) El motivo es opcional — un simple prompt basta, no
+      // hace falta un modal para algo tan puntual. Si cancela el prompt
+      // (null), se desaprueba igual pero sin motivo guardado.
+      var motivo = window.prompt("Motivo del rechazo (opcional) para " + u.nombre + ":", "");
+      if (motivo === null) return; // canceló el prompt del todo — no se toca nada
+      btn.disabled = true; btn.textContent = "Desaprobando…";
+      global.NG_DATA.usuarios.actualizarUsuarioAdmin(u.id, { estado: "desaprobado", motivoRechazo: motivo.trim() || null })
+        .then(function () {
+          global.NG_TOAST.show(u.nombre + " fue desaprobado.", "success");
+          u.estado = "desaprobado"; u.motivo_rechazo = motivo.trim() || null;
+          pintarTodo();
+        })
+        .catch(function (err) {
+          btn.disabled = false; btn.textContent = "Desaprobar";
+          global.NG_TOAST.show(global.NG_ERR.format(err), "error");
+        });
+    }
+
     function pintarPendientes() {
       var term = pendSearch.value.trim().toLowerCase();
-      var pendientes = usuarios.filter(function (u) { return u.estado === "pendiente_activacion"; });
+      var esDesaprobados = tabActivo === "desaprobados";
+      var lista = usuarios.filter(function (u) { return u.estado === (esDesaprobados ? "desaprobado" : "pendiente_activacion"); });
       if (term) {
-        pendientes = pendientes.filter(function (u) {
+        lista = lista.filter(function (u) {
           return (u.nombre || "").toLowerCase().indexOf(term) >= 0 || (u.email || "").toLowerCase().indexOf(term) >= 0;
         });
       }
       pendWrap.innerHTML = "";
-      if (!pendientes.length) {
-        pendWrap.appendChild(el("div", { class: "empty-state", style: "border:none;" }, [term ? "Nadie pendiente coincide con esa búsqueda." : "No hay cuentas esperando aprobación ahora mismo."]));
+      if (!lista.length) {
+        var vacioMsg = term
+          ? "Nadie coincide con esa búsqueda."
+          : (esDesaprobados ? "No hay cuentas desaprobadas por ahora." : "No hay cuentas esperando aprobación ahora mismo.");
+        pendWrap.appendChild(el("div", { class: "empty-state", style: "border:none;" }, [vacioMsg]));
         return;
       }
-      pendientes.forEach(function (u) {
-        var row = el("div", { class: "toggle-row" }, [
-          el("span", {}, [u.nombre + " — " + u.email])
-        ]);
-        var aprobarBtn = el("button", { class: "btn btn-accent", type: "button", style: "padding:6px 14px;font-size:12px;" }, ["Aprobar"]);
-        aprobarBtn.addEventListener("click", function () {
-          aprobarBtn.disabled = true; aprobarBtn.textContent = "Aprobando…";
-          global.NG_DATA.usuarios.actualizarUsuarioAdmin(u.id, { estado: "activo" })
-            .then(function () {
-              global.NG_TOAST.show(u.nombre + " fue aprobado como miembro.", "success");
-              u.estado = "activo";
-              pintarTodo();
-            })
-            .catch(function (err) {
-              aprobarBtn.disabled = false; aprobarBtn.textContent = "Aprobar";
-              global.NG_TOAST.show(global.NG_ERR.format(err), "error");
-            });
-        });
-        row.appendChild(aprobarBtn);
+      lista.forEach(function (u) {
+        var info = [el("span", {}, [u.nombre + " — " + u.email])];
+        if (esDesaprobados) {
+          var detalle = "Desaprobado por " + nombreDe(u.rechazado_por) + (u.motivo_rechazo ? (" — motivo: " + u.motivo_rechazo) : " — sin motivo indicado");
+          info.push(el("div", { style: "font-size:11.5px;color:var(--text-faint);margin-top:2px;" }, [detalle]));
+        }
+        var row = el("div", { class: "toggle-row" }, [el("div", {}, info)]);
+        if (esDesaprobados) {
+          var reaprobarBtn = el("button", { class: "btn btn-accent", type: "button", style: "padding:6px 14px;font-size:12px;" }, ["Aprobar"]);
+          reaprobarBtn.addEventListener("click", function () { aprobar(u, reaprobarBtn, u.nombre + " fue re-aprobado como miembro."); });
+          row.appendChild(reaprobarBtn);
+        } else {
+          var botones = el("div", { style: "display:flex;gap:8px;" });
+          var aprobarBtn = el("button", { class: "btn btn-accent", type: "button", style: "padding:6px 14px;font-size:12px;" }, ["Aprobar"]);
+          aprobarBtn.addEventListener("click", function () { aprobar(u, aprobarBtn); });
+          var desaprobarBtn = el("button", { class: "btn btn-ghost", type: "button", style: "padding:6px 14px;font-size:12px;" }, ["Desaprobar"]);
+          desaprobarBtn.addEventListener("click", function () { desaprobar(u, desaprobarBtn); });
+          botones.appendChild(aprobarBtn); botones.appendChild(desaprobarBtn);
+          row.appendChild(botones);
+        }
         pendWrap.appendChild(row);
       });
     }

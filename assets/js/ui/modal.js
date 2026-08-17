@@ -110,6 +110,25 @@
         // un <input>/<select> con .value — se imita eso con un getter para no
         // duplicar la lógica de "required" ni la de armar `values` al guardar.
         Object.defineProperty(input, "value", { get: function () { return Object.keys(seleccionados); } });
+      } else if (f.type === "file") {
+        // (2026-08-15) Subida directa a Supabase Storage — el caller (ver
+        // data/flyers.js) recibe el File real en values[f.name] y hace el
+        // upload él mismo antes del insert/update; acá solo se arma el
+        // input + una vista previa opcional (f.previewUrl, para "editar").
+        input = el("div", { class: "modal-file" });
+        if (f.previewUrl) {
+          input.appendChild(el("img", { src: f.previewUrl, alt: "", style: "width:100%;max-height:140px;object-fit:cover;border-radius:8px;margin-bottom:8px;" }));
+        }
+        var fileInput = el("input", { type: "file", accept: f.accept || "image/*" });
+        var fileNameEl = el("div", { class: "modal-hint", style: "margin-top:4px;" }, [""]);
+        var chosenFile = null;
+        fileInput.addEventListener("change", function () {
+          chosenFile = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+          fileNameEl.textContent = chosenFile ? "Seleccionado: " + chosenFile.name : "";
+        });
+        input.appendChild(fileInput);
+        input.appendChild(fileNameEl);
+        Object.defineProperty(input, "value", { get: function () { return chosenFile; } });
       } else {
         input = el("input", { type: f.type || "text", placeholder: f.placeholder || "" });
         if (f.value) input.value = f.value;

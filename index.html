@@ -69,7 +69,7 @@
 
   <div class="landing-section" id="landing-flyers-section" style="display:none;">
     <h2>Flyers</h2>
-    <div id="landing-flyers" class="grid grid-cols-3"></div>
+    <div id="landing-flyers"></div>
   </div>
 
   <div class="landing-section" id="landing-fundadores-section" style="display:none;">
@@ -129,14 +129,27 @@
     try {
       var flyers = (window.NG_DATA.flyers ? await window.NG_DATA.flyers.listar() : []).filter(function (f) { return f.activo; });
       if (flyers.length) {
-        var grid = q("#landing-flyers");
+        // (2026-08-16) Cadena de cuadrados + lightbox — antes era una card
+        // ancha que recortaba imágenes horizontales. Mismo patrón/clases
+        // que NG_SHARED.flyerGallery (shared.js), duplicado acá porque esta
+        // página no carga shared.js (es standalone, corre antes del login).
+        var strip = el("div", { class: "flyer-strip" });
+        var lightbox = el("div", { class: "flyer-lightbox" });
+        var lightboxImg = el("img", { src: "", alt: "" });
+        lightboxImg.addEventListener("click", function (ev) { ev.stopPropagation(); });
+        lightbox.appendChild(lightboxImg);
+        lightbox.addEventListener("click", function () { lightbox.classList.remove("open"); });
         flyers.forEach(function (f) {
-          grid.appendChild(el("div", { class: "card" }, [
-            el("img", { src: f.imagenUrl, alt: f.titulo, style: "width:100%;border-radius:8px;margin-bottom:8px;object-fit:cover;max-height:160px;" }),
-            el("div", { style: "font-weight:600;font-size:13px;" }, [f.titulo]),
-            f.descripcion ? el("div", { style: "font-size:12px;color:var(--text-soft);margin-top:2px;" }, [f.descripcion]) : null
-          ].filter(Boolean)));
+          var thumb = el("div", { class: "flyer-thumb" }, [el("img", { src: f.imagenUrl, alt: f.titulo })]);
+          thumb.addEventListener("click", function () {
+            lightboxImg.src = f.imagenUrl; lightboxImg.alt = f.titulo;
+            lightbox.classList.add("open");
+          });
+          strip.appendChild(el("div", { class: "flyer-card" }, [thumb, el("div", { class: "flyer-caption" }, [f.titulo])]));
         });
+        var flyersRoot = q("#landing-flyers");
+        flyersRoot.appendChild(strip);
+        flyersRoot.appendChild(lightbox);
         q("#landing-flyers-section").style.display = "";
       }
     } catch (e) { /* sin flyers, no es crítico para la landing */ }
@@ -171,7 +184,11 @@
     });
 
     q("#landing-loading").style.display = "none";
-    q("#landing").style.display = "";
+    // (2026-08-16) Bug encontrado en pruebas: "#landing" empieza con
+    // display:none EN LA HOJA DE ESTILOS (arriba en <style>), no inline.
+    // Limpiar el inline (style.display = "") no pisa esa regla — hay que
+    // asignar un valor explícito para que en verdad se muestre.
+    q("#landing").style.display = "block";
   }
 
   window.NG_AUTH.getSession()

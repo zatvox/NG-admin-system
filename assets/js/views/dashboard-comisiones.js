@@ -31,10 +31,6 @@
         S.kpi(eventos.filter(function (e) { return U.diasRestantes(e.fecha, global.NG_STATE.today) >= 0; }).length, "Próximos eventos")
       ]);
       root.appendChild(kpis);
-      root.appendChild(el("div", { class: "section-title" }, ["Resumen por comisión"]));
-      var grid = el("div", { class: "grid grid-cols-5" });
-      comisiones.forEach(function (c) { grid.appendChild(S.comisionCard(c, p)); });
-      root.appendChild(grid);
     } else if (p.rol === "lider") {
       var c = S.getComision(comisiones, p.comisionId);
       var t = S.allTareas(comisiones).filter(function (x) { return x.comisionId === c.id; });
@@ -101,6 +97,20 @@
       var g2 = el("div", { class: "grid grid-cols-2" });
       comunicados.filter(function (c) { return c.alcance === "general"; }).forEach(function (c) { g2.appendChild(S.comunicadoCard(c, comisiones)); });
       root.appendChild(g2);
+    }
+
+    // (2026-08-16) Flyers en Inicio, para todos los roles — reemplaza el
+    // viejo "Resumen por comisión" de Dirección (esa info ya vive en
+    // Comisiones). No bloquea el resto del dashboard si falla o si no hay
+    // flyers activos: simplemente no se muestra la sección.
+    if (global.NG_DB && global.NG_DATA.flyers) {
+      try {
+        var flyersInicio = (await global.NG_DATA.flyers.listar()).filter(function (f) { return f.activo; });
+        if (flyersInicio.length) {
+          root.appendChild(el("div", { class: "section-title", style: "margin-top:22px;" }, ["Flyers"]));
+          root.appendChild(S.flyerGallery(flyersInicio));
+        }
+      } catch (eFlyers) { /* no crítico para el resto del dashboard */ }
     }
   }
 

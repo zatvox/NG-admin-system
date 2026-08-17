@@ -38,7 +38,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type estado_usuario as enum ('activo','pendiente_activacion','suspendido');
+  create type estado_usuario as enum ('activo','pendiente_activacion','suspendido','desaprobado');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -59,11 +59,14 @@ create table if not exists usuarios (
   avatar_url     text,
   es_direccion   boolean not null default false, -- rol global "Dirección General"
   estado         estado_usuario not null default 'pendiente_activacion',
+  motivo_rechazo text, -- (2026-08-16) solo tiene sentido si estado='desaprobado'; opcional
+  rechazado_por  uuid references usuarios(id) on delete set null,
+  rechazado_en   timestamptz,
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
 comment on table usuarios is 'Perfil de cada persona autenticada. es_direccion=true = Dirección General (acceso total).';
-comment on column usuarios.estado is 'pendiente_activacion = se registró pero nadie lo asignó a un comando todavía (=Colaborador en la spec).';
+comment on column usuarios.estado is 'pendiente_activacion = recién se registró; activo = aprobado por un Líder; suspendido = miembro activo al que se le quitó el acceso; desaprobado = solicitud de ingreso rechazada (ver motivo_rechazo/rechazado_por).';
 
 -- ---------------------------------------------------------------------
 -- 2. COMISIONES — las 5 comisiones fijas (Comunidad, Organización, etc.)

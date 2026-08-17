@@ -309,20 +309,24 @@
   };
 
   // (2026-08-15) Flyers de la landing pública (index.html), exclusivo de
-  // Dirección (ver rls-policies.sql). Todavía no hay botón de "subir
-  // imagen" en la app — la imagen se sube a mano al bucket "flyers" de
-  // Supabase Storage y aquí se pega el link público (ver migración 0010).
+  // Dirección (ver rls-policies.sql). El campo "imagenArchivo" (type:
+  // "file") sube directo al bucket "flyers" de Supabase Storage — ver
+  // data/flyers.js → subirImagen(); ya no hace falta pegar ningún link.
   global.NG_openNuevoFlyerModal = function () {
     global.NG_MODAL.openForm({
       title: "Nuevo flyer",
       entityLabel: "Flyer",
       fields: [
         { name: "titulo", label: "Título", type: "text", required: true, placeholder: "Ej. Convocatoria abierta a simpatizantes" },
-        { name: "imagenUrl", label: "URL de la imagen", type: "url", required: true, placeholder: "https://…", hint: "Sube la imagen al bucket \"flyers\" en Supabase Storage y pega aquí el link público." },
+        { name: "imagenArchivo", label: "Imagen del flyer", type: "file", required: true, hint: "JPG, PNG o WEBP. Se sube directo al bucket \"flyers\" — no necesitas ningún link." },
         { name: "descripcion", label: "Descripción (opcional)", type: "textarea" },
         { name: "orden", label: "Orden (menor = aparece primero)", type: "text", value: "0" }
       ],
-      onSave: function (v) { return global.NG_DATA.flyers.crear(v); }
+      onSave: function (v) {
+        return global.NG_DATA.flyers.crear({
+          titulo: v.titulo, descripcion: v.descripcion, orden: v.orden, imagenFile: v.imagenArchivo
+        });
+      }
     });
   };
 
@@ -332,12 +336,17 @@
       entityLabel: "Flyer",
       fields: [
         { name: "titulo", label: "Título", type: "text", required: true, value: f.titulo },
-        { name: "imagenUrl", label: "URL de la imagen", type: "url", required: true, value: f.imagenUrl },
+        { name: "imagenArchivo", label: "Reemplazar imagen (opcional)", type: "file", required: false, previewUrl: f.imagenUrl, hint: "Deja este campo vacío para conservar la imagen actual (arriba)." },
         { name: "descripcion", label: "Descripción (opcional)", type: "textarea", value: f.descripcion || "" },
         { name: "orden", label: "Orden (menor = aparece primero)", type: "text", value: String(f.orden || 0) },
         { name: "activo", label: "Visible en la landing", type: "select", options: [{ value: "1", label: "Sí, activo" }, { value: "", label: "No, oculto" }], value: f.activo ? "1" : "" }
       ],
-      onSave: function (v) { return global.NG_DATA.flyers.actualizar(f.id, Object.assign({}, v, { activo: v.activo === "1" })); }
+      onSave: function (v) {
+        return global.NG_DATA.flyers.actualizar(f.id, {
+          titulo: v.titulo, descripcion: v.descripcion, orden: v.orden,
+          activo: v.activo === "1", imagenFile: v.imagenArchivo, imagenUrl: f.imagenUrl
+        });
+      }
     });
   };
 

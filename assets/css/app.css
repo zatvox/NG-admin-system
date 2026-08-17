@@ -19,9 +19,21 @@
   .brand{
     padding:20px 20px 16px;
     border-bottom:1px solid rgba(255,255,255,.08);
+    position:relative;
   }
   .brand-title{font-size:15px;font-weight:700;line-height:1.25;}
   .brand-sub{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8B93B8;margin-top:4px;}
+  /* (2026-08-16) Solo se muestra en móvil (ver responsive.css) — en
+     escritorio el sidebar no se oculta, así que no hace falta la flecha. */
+  #sidebar-close{
+    display:none;
+    position:absolute; top:14px; right:14px;
+    width:30px;height:30px;border-radius:8px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14);
+    color:#fff; font-size:18px; line-height:1; cursor:pointer;
+    align-items:center;justify-content:center;
+  }
+  #sidebar-close:hover{background:rgba(255,255,255,.16);}
   nav#main-nav{flex:1;padding:14px 10px;overflow-y:auto;}
   .nav-item{
     display:flex;align-items:center;gap:10px;
@@ -71,7 +83,14 @@
   #hamburger span::after{top:5px;}
   #page-title{font-size:15px;font-weight:600;color:var(--ink);}
   #page-title .mono{color:var(--text-faint);font-weight:400;font-size:12px;margin-left:8px;}
-  .topbar-right{display:flex;align-items:center;gap:12px;}
+  /* (2026-08-16) "justify-content:flex-end" acá adentro solo alinea los
+     ÍCONOS dentro de esta caja — no mueve la caja misma. Cuando #topbar
+     envuelve (flex-wrap) y .topbar-right cae a su propia fila, esa caja
+     se queda con su ancho de contenido (no 100%) pegada al borde IZQUIERDO
+     de esa fila, y ahí es donde el dropdown de "+"/campana se salía de
+     pantalla. "margin-left:auto" empuja la CAJA ENTERA al borde derecho de
+     su fila, sin importar si está sola o comparte fila con el buscador. */
+  .topbar-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto;}
 
   /* ---------- Buscador global ---------- */
   .topbar-search{position:relative;flex:1 1 260px;max-width:440px;min-width:120px;}
@@ -88,6 +107,26 @@
     box-shadow:0 10px 30px -8px rgba(22,33,62,.22);
     min-width:260px; max-width:360px; max-height:420px; overflow-y:auto;
     z-index:50; padding:6px;
+  }
+  /* (2026-08-16) Bug de mobile: en pantallas angostas el botón "+"/campana
+     puede terminar cerca del borde izquierdo cuando .topbar-right se
+     envuelve a su propia fila (flex-wrap), y el panel (min-width:260px)
+     se salía de la pantalla por la derecha sin que se vieran las opciones.
+     Fix de dos partes: 1) forzar que .topbar-right quede pegado a la
+     derecha aunque se envuelva, 2) topar el ancho del panel al viewport
+     para que nunca se salga sin importar dónde termine el botón. */
+  @media(max-width:640px){
+    /* (2026-08-16, 2do intento) El primer fix (topar max-width) no alcanzó:
+       el botón "+"/campana casi nunca está pegado al borde derecho real de
+       la pantalla (está antes del chip/"Cerrar sesión"/avatar), así que el
+       panel — anclado con right:0 a ESE botón — igual se salía por la
+       izquierda. Fix real: en vez de anclar cada panel a su botón
+       individual (.topbar-dropdown), se ancla al propio #topbar (que sí
+       ocupa el ancho completo de la pantalla) volviendo ".topbar-dropdown"
+       "position:static" — así "right:0" apunta al borde derecho real de
+       la pantalla y "top:100%" cae justo debajo de TODO el topbar, sin
+       importar cuál de los botones se haya apretado. */
+    .topbar-panel{ max-width:calc(100vw - 24px); min-width:0; width:min(300px, calc(100vw - 24px)); }
   }
   .topbar-search-results{left:0;right:auto;min-width:100%;width:100%;}
   .topbar-panel.open{display:block;}
@@ -141,7 +180,13 @@
   #topbar-context-panel{right:0;left:auto;min-width:240px;}
   #topbar-context-panel .topbar-panel-item{cursor:default;}
   #topbar-context-panel .topbar-panel-item:hover{background:none;}
-  @media(max-width:900px){ #topbar-context-wrap{display:none!important;} }
+  /* (2026-08-16) Antes esto se ocultaba por completo en móvil
+     (display:none!important) — el chip simplemente desaparecía y no había
+     forma de consultar en qué comando/comisión estás desde el celular.
+     Ahora se achica en vez de esconderse. */
+  @media(max-width:900px){
+    #topbar-context{max-width:150px;font-size:9.5px;padding:6px 10px;}
+  }
 
   .persona-switch{display:flex;align-items:center;gap:8px;}
   .persona-switch select{width:auto;min-width:220px;padding:8px 10px;font-size:13px;}

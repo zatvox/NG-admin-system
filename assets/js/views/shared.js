@@ -424,6 +424,33 @@
     };
   }
 
+  // (2026-08-16) Galería de flyers para "Inicio" — cadena de cuadrados con
+  // lightbox (click agranda, click afuera de la imagen encoge). Mismas
+  // clases CSS que usa index.html (ver components.css → .flyer-*), que
+  // trae su propia copia de este mismo patrón porque esa página no carga
+  // shared.js (es standalone, antes incluso del login).
+  function flyerGallery(flyers) {
+    var wrap = el("div", {});
+    if (!flyers || !flyers.length) return wrap;
+    var strip = el("div", { class: "flyer-strip" });
+    var lightbox = el("div", { class: "flyer-lightbox" });
+    var lightboxImg = el("img", { src: "", alt: "" });
+    lightboxImg.addEventListener("click", function (e) { e.stopPropagation(); });
+    lightbox.appendChild(lightboxImg);
+    lightbox.addEventListener("click", function () { lightbox.classList.remove("open"); });
+    flyers.forEach(function (f) {
+      var thumb = el("div", { class: "flyer-thumb" }, [el("img", { src: f.imagenUrl, alt: f.titulo })]);
+      thumb.addEventListener("click", function () {
+        lightboxImg.src = f.imagenUrl; lightboxImg.alt = f.titulo;
+        lightbox.classList.add("open");
+      });
+      strip.appendChild(el("div", { class: "flyer-card" }, [thumb, el("div", { class: "flyer-caption" }, [f.titulo])]));
+    });
+    wrap.appendChild(strip);
+    wrap.appendChild(lightbox);
+    return wrap;
+  }
+
   global.NG_SHARED = {
     ESTADO_LABEL: ESTADO_LABEL, sum: sum, kpi: kpi,
     getComision: getComision, getSubgrupo: getSubgrupo, allTareas: allTareas,
@@ -433,6 +460,7 @@
     comunicadoCard: comunicadoCard, enlaceCard: enlaceCard,
     rowKV: rowKV, actionBtn: actionBtn,
     kebabMenu: kebabMenu, gestionRow: gestionRow,
-    comisionFilterBar: comisionFilterBar
+    comisionFilterBar: comisionFilterBar,
+    flyerGallery: flyerGallery
   };
 })(window);

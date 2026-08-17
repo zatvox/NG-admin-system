@@ -15,8 +15,20 @@
     #sidebar.open{transform:translateX(0);}
     #main-col{margin-left:0;}
     #hamburger{display:flex;}
+    #sidebar-close{display:flex;}
     #overlay.show{display:block;}
     .persona-switch select{min-width:150px;}
+  }
+  /* (2026-08-16) Va acá (no en app.css) a propósito: este archivo carga
+     AL FINAL, así que gana el empate de especificidad contra la regla
+     base ".topbar-dropdown{position:relative}" de app.css — puesta en
+     app.css dentro de su propio @media no alcanzaba porque esa regla
+     base venía DESPUÉS en el mismo archivo y ganaba el empate.
+     Sin esto, ".topbar-panel" (el menú de "+"/campana/chip) quedaba
+     anclado al botón individual en vez de al ancho completo de #topbar,
+     y se salía de la pantalla en móvil. Ver detalle en app.css. */
+  @media(max-width:640px){
+    .topbar-dropdown{ position:static; }
   }
   @media(prefers-reduced-motion:reduce){
     *{animation-duration:.001ms!important;transition-duration:.001ms!important;}

@@ -48,6 +48,7 @@
     q("#overlay").classList.toggle("show");
   });
   q("#overlay").addEventListener("click", closeSidebarMobile);
+  q("#sidebar-close").addEventListener("click", closeSidebarMobile);
 
   q("#topbar-enlistarse").addEventListener("click", function () {
     location.hash = "#/comisiones";

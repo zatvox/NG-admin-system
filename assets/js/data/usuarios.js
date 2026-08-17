@@ -28,13 +28,30 @@
     return data || [];
   }
 
-  // payload = { estado?, esDireccion? } — se manda solo lo que cambió,
-  // para no pisar el otro campo con un update innecesario.
+  // payload = { estado?, esDireccion?, motivoRechazo? } — se manda solo lo
+  // que cambió, para no pisar el otro campo con un update innecesario.
+  // (2026-08-16) Etapa 6: si estado="desaprobado", se guarda quién
+  // desaprobó (el usuario logueado) + el motivo opcional + la fecha. Si se
+  // vuelve a "activo" (aprobar o re-aprobar), se limpia ese rastro — ya no
+  // aplica una vez que la cuenta quedó aprobada.
   async function actualizarUsuarioAdmin(usuarioId, payload) {
     if (!db) return null;
     var cambios = {};
     if (typeof payload.esDireccion === "boolean") cambios.es_direccion = payload.esDireccion;
-    if (payload.estado) cambios.estado = payload.estado;
+    if (payload.estado) {
+      cambios.estado = payload.estado;
+      if (payload.estado === "desaprobado") {
+        var { data: userData, error: eUser } = await db.auth.getUser();
+        if (eUser) throw eUser;
+        cambios.motivo_rechazo = payload.motivoRechazo || null;
+        cambios.rechazado_por = userData.user.id;
+        cambios.rechazado_en = new Date().toISOString();
+      } else if (payload.estado === "activo") {
+        cambios.motivo_rechazo = null;
+        cambios.rechazado_por = null;
+        cambios.rechazado_en = null;
+      }
+    }
     var { error } = await db.from("usuarios").update(cambios).eq("id", usuarioId);
     if (error) throw error;
   }
