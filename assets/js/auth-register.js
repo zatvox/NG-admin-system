@@ -26,6 +26,19 @@
     wireToggle("#reg-password", "#reg-password-toggle");
     wireToggle("#reg-password2", "#reg-password2-toggle");
 
+    // (2026-09-30) Si llegó acá desde inscripcion.html ("crear cuenta"),
+    // ?next= trae a dónde volver — se lo pasamos a los links "inicia
+    // sesión" para que, tras confirmar el correo y loguearse, vuelva
+    // directo al evento en vez de quedarse en app.html.
+    var next = window.NG_UTILS.leerNextSeguro();
+    if (next) {
+      var loginDestino = "login.html?next=" + encodeURIComponent(next);
+      var linkExito = q("#register-success-login-link");
+      var linkAbajo = q("#register-login-link");
+      if (linkExito) linkExito.href = loginDestino;
+      if (linkAbajo) linkAbajo.href = loginDestino;
+    }
+
     if (window.NG_AUTH.isDemo) {
       q("#demo-banner").style.display = "block";
       q("#register-form").style.display = "none";
@@ -57,8 +70,10 @@
 
       // Mismo patrón que forgot-password.html: se manda explícito a dónde
       // debe volver el link del correo de confirmación, en vez de confiar
-      // en que el "Site URL" del panel de Supabase esté bien puesto.
-      var redirectTo = window.location.origin + window.location.pathname.replace("register.html", "login.html");
+      // en que el "Site URL" del panel de Supabase esté bien puesto. Si
+      // venía con ?next=, el link del correo también lo conserva.
+      var redirectTo = window.location.origin + window.location.pathname.replace("register.html", "login.html")
+        + (next ? "?next=" + encodeURIComponent(next) : "");
       window.NG_AUTH.register(email, password, nombre, redirectTo)
         .then(function () {
           q("#register-form").style.display = "none";

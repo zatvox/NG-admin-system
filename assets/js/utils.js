@@ -55,9 +55,22 @@
     };
   }
 
+  // (2026-09-30) leerNextSeguro — usado por login.html/register.html para
+  // volver a inscripcion.html?e=<codigo> después de iniciar sesión o crear
+  // cuenta. Solo acepta un archivo .html LOCAL con querystring propio
+  // opcional — nunca una URL externa ni algo con "//" — así ?next= no se
+  // puede usar para un open-redirect a otro dominio.
+  function leerNextSeguro(search) {
+    var m = /[?&]next=([^&]+)/.exec(search || global.location.search);
+    if (!m) return null;
+    var val = decodeURIComponent(m[1]);
+    return /^[a-zA-Z0-9_-]+\.html(\?[^\s]*)?$/.test(val) ? val : null;
+  }
+
   global.NG_UTILS = {
     MESES: MESES, DIAS: DIAS, DOW: DOW,
     slugify: slugify, isoDate: isoDate, fmtFecha: fmtFecha, fmtLargeDate: fmtLargeDate,
-    diasRestantes: diasRestantes, initials: initials, sum: sum, debounce: debounce
+    diasRestantes: diasRestantes, initials: initials, sum: sum, debounce: debounce,
+    leerNextSeguro: leerNextSeguro
   };
 })(window);

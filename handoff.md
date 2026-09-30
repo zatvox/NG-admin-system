@@ -1,72 +1,67 @@
 # Handoff — Sistema de Comisiones (Nueva Generación)
 
 ## 1. Objetivo
-Sistema web (vanilla JS + Supabase) para una organización política/social: gestión de comisiones, comandos y miembros, con un flujo de aprobación de cuentas nuevas antes de darles acceso a información interna.
+Sistema web (vanilla JS + Supabase) para una organización política/social: gestión de comisiones, comandos y miembros, calendario/tareas/foro/directorio, y (esta sesión) un **sistema de puntaje** que acredita créditos verificables por participación (perfil completo, asistencia validada, entrega de resultados).
 
 ## 2. Estado actual
 
-**Funciona (verificado en vivo, GitHub Pages + Live Server):**
-- Login/registro real con Supabase Auth, multi-comisión/multi-comando por persona.
-- RLS de aprobación: cuenta nueva = `estado='pendiente_activacion'` → solo ve `index.html` (landing pública: flyers, fundadores, eventos/comunicados `alcance='general'`). Verificado con la cuenta de prueba `zvagentepro@gmail.com`.
-- Login bloquea cuentas `suspendido` con mensaje explícito. Cuentas `desaprobado` reciben el mismo trato que `pendiente_activacion` (ven la landing pública, sin mensaje especial de rechazo — así lo pidió Luis).
-- Directorio (solo Líder/Dirección): tabs "Pendientes de aprobación" / "Desaprobados", buscador en cada uno, botón Aprobar / Desaprobar (con motivo opcional vía prompt), tabla "Todos los miembros" con estado editable (incluye reaprobar desde el desplegable), actualización en tiempo real vía Supabase Realtime. Verificado con la cuenta admin `luis.paz.vilca@gmail.com` (excepto el flujo de Desaprobar/tab Desaprobados — implementado pero sin probar en vivo, ver sección 4).
-- Flyers: subida de imagen directo desde el modal (ya no se pega URL a mano) → sube a bucket Storage `flyers` → arma la URL pública sola. Galería tipo cuadrícula (cuadrados en fila) con lightbox (click agranda, click afuera encoge) en `index.html` y en "Inicio" del panel interno. Verificado en vivo en `index.html` con Live Server (thumbnail cuadrado sin recorte + lightbox abre/cierra bien).
-- `index.html`: bug de pantalla en blanco corregido (era CSS, no RLS — ver sección 4).
+**Sistema de Puntaje — Etapas 1, 2 y 3 completas y probadas en vivo:**
+- **Etapa 1 (motor de reglamento):** catálogo de reglas (`scoring_rule_versions`/`scoring_rules`/`rule_fixed_value`/`rule_value_matrix`/`rule_multiplier_value`), con ciclo de vida BORRADOR → VIGENTE → CERRADA. Configurable desde Configuración → 3 tabs nuevas (Puntaje: Perfil / Asistencia / Resultados y Vigencia). Verificado en vivo: los 4 tabs cargan datos reales, un guardado real de valores de perfil confirmó el camino de escritura.
+- **Etapa 2 (motor de acreditación):** `credit_events` + `ledger_movements` + `member_score_balances`, con 3 triggers `SECURITY DEFINER` (`fn_acreditar_perfil`, `fn_acreditar_asistencia`, `fn_acreditar_resultado`) que solo acreditan si existe una versión VIGENTE. 4 pantallas nuevas (Asistencia, Entrega de resultados, Mi puntuación, Ranking). Verificado en vivo de punta a punta con el reglamento en BORRADOR: evento de prueba clasificado, lista de asistencia creada/auditada/validada, resultado entregado/validado — confirmado por consulta directa a `credit_events`/`ledger_movements` que **cero créditos se generaron** mientras el reglamento no esté VIGENTE (el candado funciona).
+- **Etapa 3 (wizard de perfil):** `#/completar-perfil`, 5 pasos (Identidad, Territorio, Contacto, Formación y ocupación, Acerca de mí), cada paso se guarda por separado. CTA agregado en "Mi perfil" (resumen de puntaje + botón) y en "Mi puntuación". `auth.js` extendido para traer los campos nuevos de `usuarios` en el objeto `persona`.
+- **Territorio con País + catálogo peruano (agregado después, misma sesión ampliada):** el paso Territorio ahora arranca con un select de **País** (Perú por defecto, 196 países listados). Si es Perú, región/provincia/distrito son 3 selects en cascada con el catálogo oficial completo (`assets/js/data/ubigeo-peru.js`, dataset abierto empaquetado como archivo estático — 25 regiones/196 provincias/1892 distritos, sin tocar Supabase porque es data geográfica que casi no cambia). Si el país es otro, esos 3 campos pasan a texto libre y se vuelven obligatorios.
+
+**Bug encontrado y corregido durante las pruebas de esta sesión:**
+- `data/resultados.js` fallaba ("Algo salió mal") al listar entregas — `result_deliveries` tiene DOS FK a `usuarios` (`usuario_id` y `validated_by`), y el `.select("usuarios(nombre)")` quedaba ambiguo para PostgREST. Corregido especificando la constraint exacta (`usuarios!result_deliveries_usuario_id_fkey`). Verificado funcionando después del fix.
 
 **Pendiente / sin verificar en vivo:**
-- Estado `desaprobado`: falta correr `assets/sql/migrations/0011_desaprobacion.sql` en Supabase (agrega el valor al enum + 3 columnas nuevas). **Sin este paso, "Desaprobar" desde el Directorio va a fallar.**
-- Dropdowns del topbar ("+", campana, chip) en móvil: **corregido y verificado matemáticamente** (ver sección 4 — `resize_window` de la tool de navegador dejó de responder a mitad de sesión, así que se verificó inyectando las reglas del media query directamente y confirmando que `panel.x + panel.width === window.innerWidth` exacto, sin importar qué botón se abra). Falta que Luis lo confirme visualmente en un celular real.
-- La galería de flyers en "Inicio" (dashboard del panel interno) y la flecha del sidebar (`#sidebar-close`) no se probaron visualmente en viewport móvil real por la misma limitación de la tool — sí se probó la galería de flyers en `index.html` (misma CSS/patrón) y el layout general de Inicio en escritorio.
+- **`assets/sql/migrations/0007_dni_usuarios.sql` nunca se corrió en producción** — la columna `usuarios.dni` no existe en la base real, aunque sí está en `schema.sql` (documento de referencia) y en el trigger de registro `fn_nuevo_usuario_auth`. Esto bloquea el Paso 1 del wizard (Identidad) y, por lo tanto, la regla `PROFILE_IDENTITY`. Se le envió a Luis un archivo aislado (`fix_0007_dni_faltante.sql`, contenido idéntico a la migración 0007 original) para correr en el SQL Editor de Supabase — **es el único paso que falta para que el wizard funcione al 100%.**
+- **`assets/sql/migrations/0014_pais_usuarios.sql` (nueva) tampoco se ha corrido todavía** — agrega `usuarios.pais` (default `'Perú'`, NOT NULL), necesaria para el nuevo selector de País del paso Territorio. Sin ella, guardar el paso Territorio falla (columna inexistente). Es independiente de la 0007 — hay que correr ambas.
+- El resto del wizard (pasos 2-5: Territorio, Contacto, Formación, Acerca de mí) se verificó funcionando correctamente por consola (llamando directo a `NG_DATA.usuarios.actualizarPerfilExtendido`) porque el paso 1 bloqueaba el click-through normal de la UI — falta repetir la prueba completa clickeando los 5 pasos en orden una vez corrida la migración 0007.
+- El Reglamento de Puntajes sigue en **BORRADOR** — es intencional, a la espera de aprobación formal de la Directiva Nacional (ver `especificaciones-sistema-comisiones.md` sección 12.4). Ningún punto se acredita todavía en producción.
+- Sin pantalla de administración para `fn_revertir_credito` (reverso manual de un crédito) — existe y está probada como función SQL, pero no tiene UI. Ver `ARCHITECTURE.md` sección 4, pregunta 5.
 
 ## 3. Archivos y cambios (esta sesión)
 
-**Landing pública, flyers con subida de archivo, Directorio (primera mitad de la sesión):**
-- `app.html` — agregado `<script src="assets/js/data/flyers.js">`.
-- `login.html` — texto final corregido (ya no menciona rol "Colaborador").
-- `index.html` — reescrito completo como landing pública (flyers/fundadores/noticias generales); bug de `display:none` en hoja de estilos vs. inline corregido.
-- `assets/js/permissions.js` — NAV de Directorio restringido a `["direccion","lider"]`.
-- `assets/js/views/directorio-reportes-perfil.js` — Directorio reescrito con pendientes + tabla editable + Realtime; se mantiene `viewDirectorioDemo` para modo sin Supabase.
-- `assets/js/ui/modal.js` — nuevo tipo de campo `"file"` en `openFormModal`.
-- `assets/js/data/flyers.js` — `subirImagen(file)` sube al bucket `flyers` y arma la URL pública.
-- `assets/js/modal-openers.js` — modales de flyer usan campo de archivo en vez de URL.
+**Wizard "Completar mi perfil" (Etapa 3):**
+- `assets/js/views/completar-perfil.js` — **nuevo.** Wizard de 5 pasos, guardado incremental por paso, chips de intereses cívicos (opcional), barra de progreso, puntos de cada paso mostrados en vivo desde el reglamento cargado.
+- `assets/js/data/usuarios.js` — nueva función `actualizarPerfilExtendido(payload)`, guarda solo las columnas que le pasen (permite guardado parcial por paso).
+- `assets/js/auth.js` — `cargarPersonaReal()` ahora incluye `dni, region, provincia, distrito, formacionAcademica, ocupacion, acercaDeMi, interesesCivicos` en el objeto `persona`.
+- `assets/js/views/directorio-reportes-perfil.js` — `viewPerfil()` agrega una tarjeta de resumen (saldo + % de perfil completo) con CTA a "Completar mi perfil" o a "Mi puntuación" según corresponda.
+- `assets/js/router.js` — ruta `#/completar-perfil` (sin entrada en el menú lateral, a propósito — solo se llega por CTA).
+- `app.html` — agregado `<script src="assets/js/views/completar-perfil.js">`.
 
-**Estado "desaprobado" (Etapa 6):**
-- `assets/sql/schema.sql`, `assets/sql/migrations/0001_init_schema.sql` — enum `estado_usuario` ahora incluye `'desaprobado'`; tabla `usuarios` con columnas nuevas `motivo_rechazo`, `rechazado_por`, `rechazado_en`.
-- `assets/sql/migrations/0011_desaprobacion.sql` — **nueva, todavía no corrida en producción.** `ALTER TYPE ... ADD VALUE` + `ALTER TABLE ... ADD COLUMN`. No toca RLS (la política existente de líderes ya cubre estas columnas).
-- `assets/js/data/usuarios.js` — `actualizarUsuarioAdmin` ahora acepta `motivoRechazo`; al pasar a `desaprobado` guarda quién y cuándo; al volver a `activo` limpia ese rastro.
-- `assets/js/views/directorio-reportes-perfil.js` — tabs "Pendientes de aprobación" / "Desaprobados" (chips reutilizando `.filter-chip`/`.chip-active`), botón "Desaprobar" (prompt de motivo opcional) junto a "Aprobar", tab Desaprobados muestra motivo + quién desaprobó + botón para reaprobar. `ESTADO_OPTIONS_DIR` incluye la opción "Desaprobado".
+**País + catálogo peruano en Territorio (agregado después):**
+- `assets/js/data/ubigeo-peru.js` — **nuevo.** Catálogo estático región→provincia→distrito (25/196/1892), descargado del dataset abierto `RitchieRD/ubigeos-peru-data` (INEI/RENIEC, actualizado 2024) y normalizado a Title Case. Expone `NG_DATA.ubigeo.{regiones, provincias, distritos}`.
+- `assets/js/data/paises.js` — **nuevo.** Lista de 196 países en español, Perú primero (valor por defecto). Expone `NG_DATA.paises.listar()`.
+- `assets/js/views/completar-perfil.js` — paso Territorio rediseñado: select de País arriba; si es Perú, 3 selects en cascada del catálogo; si no, 3 inputs de texto libre obligatorios (validación agregada en `nextBtn`).
+- `assets/js/data/usuarios.js` — `actualizarPerfilExtendido` ahora también guarda `pais`.
+- `assets/js/auth.js` — `cargarPersonaReal()` incluye `pais` en `persona`.
+- `assets/sql/migrations/0014_pais_usuarios.sql` — **nuevo, sin correr todavía.** `alter table usuarios add column pais text not null default 'Perú'`.
+- `assets/sql/schema.sql` — referencia actualizada con la misma columna.
 
-**Responsive (topbar/sidebar) — 2 rondas, la primera insuficiente:**
-- `app.html` — agregado botón `#sidebar-close` (flecha "‹") dentro de `.brand`, arriba del sidebar.
-- `assets/js/app.js` — click de `#sidebar-close` llama a `closeSidebarMobile()` (función ya existente, reusada).
-- `assets/css/app.css` — `#sidebar-close` estilado (oculto en desktop); `#topbar-context` ya NO se oculta con `display:none!important` en móvil — ahora se achica (`max-width:150px;font-size:9.5px`) pero sigue visible; `.topbar-right` con `justify-content:flex-end;margin-left:auto` (el `margin-left:auto` es el que realmente importa — ver sección 4); `.topbar-panel` con `max-width`/`width` acotados al viewport en `max-width:640px`.
-- `assets/css/responsive.css` — `#sidebar-close{display:flex;}` en el breakpoint de 860px; **nuevo bloque** `@media(max-width:640px){ .topbar-dropdown{position:static;} }` — puesto acá (no en app.css) a propósito, porque este archivo carga al final y gana el empate de especificidad contra la regla base de app.css (ver sección 4, este fue el bug real).
+**Fix de bug (Etapa 2, encontrado en pruebas):**
+- `assets/js/data/resultados.js` — `usuarios(nombre)` → `usuarios!result_deliveries_usuario_id_fkey(nombre)` en el `.select()` de `listarEntregas()`.
 
-**Inicio: galería de flyers en vez de resumen de comisiones:**
-- `assets/js/views/shared.js` — nueva función `flyerGallery(flyers)`, exportada en `NG_SHARED`. Cadena de cuadrados (`.flyer-strip`/`.flyer-card`/`.flyer-thumb`) + lightbox (`.flyer-lightbox`) que abre al click y cierra al click afuera de la imagen.
-- `assets/js/views/dashboard-comisiones.js` — quitado el bloque "Resumen por comisión" (grid de `comisionCard`) del Inicio de Dirección; agregada sección "Flyers" al final de `viewDashboard()`, para todos los roles, usando `S.flyerGallery(...)`.
-- `assets/css/components.css` — clases nuevas `.flyer-strip`, `.flyer-card`, `.flyer-thumb`, `.flyer-caption`, `.flyer-lightbox` (compartidas por Inicio e `index.html`, ambos cargan este archivo).
-- `index.html` — sección de flyers reescrita para usar el mismo patrón de galería + lightbox (duplicado standalone porque esta página no carga `shared.js`). **Verificado en vivo**: thumbnail cuadrado correcto, lightbox abre y cierra bien.
+**Documentación (Etapa 4):**
+- `especificaciones-sistema-comisiones.md` — nueva sección 12 completa (Sistema de Puntaje: objetivo, orígenes, valores aprobados, ciclo de vida del reglamento, pantallas nuevas, guía paso a paso de cómo se acumulan los puntos, decisiones de alcance, verificación realizada); sección 4 (módulos) y 9 (próximos pasos) actualizadas.
+- `ARCHITECTURE.md` — nueva sección 6 (motor de acreditación: diagrama de triggers, por qué la idempotency_key lleva un marcador de origen, columna generada `nivel_organizador`); pregunta abierta nueva sobre la UI de reversión.
+- `README.md` — módulos nuevos listados, sección "Sistema de Puntaje" agregada.
 
-Todos los archivos JS tocados se verificaron con `node --check` (sin errores de sintaxis).
+Todos los archivos JS tocados se verificaron con `node --check` (sin errores de sintaxis) antes de entregarse.
 
-## 4. Intentos fallidos
+## 4. Intentos fallidos / lecciones de esta sesión
 
-- **No intentar "arreglar" visibilidad con `style.display = ""`** cuando el elemento tiene `display:none` definido en una hoja de estilos (no inline) — no funciona, hay que asignar el valor explícito (`"block"`, etc.). Bug real encontrado en `index.html` esta sesión.
-- **No asumir que una pantalla en blanco es RLS** sin revisar Network/consola primero. Se sospechó de RLS bloqueando flyers/eventos/comunicados; las políticas estaban bien — los 29 requests de red daban 200. Era CSS puro.
-- **No loguearse con credenciales de usuario** usando las herramientas de navegador, aunque el usuario las comparta explícitamente — prohibido por política, sin excepciones. Consecuencia práctica de esta sesión: los cambios responsive del topbar/sidebar y la galería de flyers en "Inicio" (dashboard interno) **no se pudieron probar en vivo** porque no hay ninguna cuenta ya aprobada accesible sin escribir una contraseña. La forma correcta de depurar sigue siendo: navegar directo a una URL donde el usuario YA tiene sesión abierta en su propio navegador, y usar solo tools de lectura (screenshot, consola, network, DOM).
-- **No leer output-format SKILL.md ni asumir que hace falta un modal para todo** — para el motivo de "Desaprobar" se usó `window.prompt()` en vez de armar un modal nuevo; es más rápido y suficiente para un campo opcional de una sola línea. Mantener este criterio: no todo necesita el modal genérico de `ui/modal.js`.
-- **El bug real del dropdown móvil no era el ancho del panel, era su ancla.** Primer intento: agregar `justify-content:flex-end` a `.topbar-right` — no sirvió, porque eso solo alinea los ÍCONOS dentro de esa caja, no mueve la caja misma cuando `#topbar` la envuelve a su propia fila (queda pegada al borde IZQUIERDO de esa fila). El fix real fue `margin-left:auto` en `.topbar-right` (empuja la caja completa al borde derecho de su línea) **más** `.topbar-dropdown{position:static}` en móvil, para que cada `.topbar-panel` se ancle al `#topbar` completo (ancho de pantalla) en vez de al botón individual (que casi nunca está en el borde derecho real). Lección: cuando un dropdown se "sale de pantalla", medir con `getBoundingClientRect()` el elemento ancla (`.topbar-dropdown`) ANTES de tocar el panel — el problema casi siempre está ahí, no en el panel.
-- **CSS puesto en el archivo equivocado no se aplica aunque la regla esté "bien".** El primer intento de `.topbar-dropdown{position:static}` se puso dentro de un `@media` en `app.css`, pero la regla base `.topbar-dropdown{position:relative}` (sin media query) vive MÁS ABAJO en ese mismo archivo — con la misma especificidad, gana la que aparece después en el archivo, sin importar si la de arriba está en un media query que sí matchea. Se movió a `responsive.css` (que carga al final, según su propio comentario de encabezado) y ahí sí funcionó. Lección: los overrides responsive van en `responsive.css`, no dispersos en `app.css`, aunque parezca más cómodo ponerlos junto a la regla que corrigen.
-- **`resize_window` de las tools de navegador dejó de responder a mitad de sesión** (después de un par de `navigate()`, seguía reportando "Successfully resized" pero `window.innerWidth` no cambiaba). No se encontró la causa. Workaround que sí funcionó: inyectar temporalmente las reglas CSS del media query sin el `@media` (vía `document.head.appendChild(style)`), verificar con `getBoundingClientRect()`, y remover el `<style>` de prueba al final. Si esto se repite, probar ese mismo workaround antes de perder tiempo reintentando `resize_window`.
+- **No asumir que "sin rows returned" en Supabase es una falla.** Es el mensaje normal de un bloque `DO $$ ... $$` exitoso — la seña real de que algo no corrió es consultar la tabla directamente y ver que está vacía.
+- **Un archivo RLS grande (700+ líneas) puede fallar a la mitad sin avisar claramente** cuál política quedó sin crear. Desde la Etapa 1 se adoptó el criterio de mandar bloques SQL aislados y pequeños (solo las tablas/políticas nuevas de esa etapa) en vez de pedir que se re-corra el archivo completo cada vez — más fácil de verificar que sí terminó bien.
+- **Un `.select()` con `tabla_relacionada(campo)` falla en silencio-no-tan-silencioso si hay más de una FK hacia esa tabla** — PostgREST no adivina cuál seguir, hay que nombrar la constraint exacta (`tabla!nombre_constraint_fkey(campo)`). Vale la pena revisar cuántas FK hacia la misma tabla tiene cada tabla nueva antes de escribir el `.select()`.
+- **Migraciones "olvidadas"**: `schema.sql` es el documento de referencia del estado ideal, pero no prueba que la base de datos real esté al día — la migración 0007 (columna `dni`) llevaba escrita desde antes de esta sesión sin haberse corrido nunca en producción. Vale la pena, al iniciar una sesión nueva, verificar contra la base real (no contra `schema.sql`) las columnas de las que depende una feature nueva, en vez de asumir que "ya debe estar" solo porque aparece en el documento.
+- **No loguearse con credenciales de usuario** usando las herramientas de navegador — política sin excepciones, se mantuvo toda la sesión (todas las pruebas se hicieron contra la sesión ya autenticada de Luis, con herramientas de solo lectura + consultas directas de verificación vía consola).
 
 ## 5. Próximos pasos (en orden)
 
-1. **Correr `assets/sql/migrations/0011_desaprobacion.sql` en Supabase** (agrega `'desaprobado'` al enum `estado_usuario` + columnas `motivo_rechazo`/`rechazado_por`/`rechazado_en`). Sin esto, el botón "Desaprobar" del Directorio va a fallar con un error de Supabase.
-2. **`git push`** de todos los cambios de esta sesión y, ya en GitHub Pages (o Live Server con una cuenta aprobada), confirmar visualmente en el celular (la lógica ya está verificada matemáticamente, ver sección 4, pero falta el ojo humano en un dispositivo real):
-   - Que el dropdown de "+" y de la campana ya no se salgan de pantalla.
-   - Que el chip de "en qué comando/comisión estás" ya se vea en el topbar en móvil.
-   - Que la flecha "‹" arriba del sidebar (una vez abierto con el hamburguesa) lo cierre bien.
-   - Que la galería de flyers en "Inicio" se vea igual de bien que en `index.html` (ya confirmado ahí).
-3. **Probar el flujo completo de "Desaprobados"** con la cuenta admin: desaprobar a alguien pendiente (con y sin motivo), confirmar que aparece en el tab "Desaprobados" con el motivo y el nombre de quién lo desaprobó, y que el botón "Aprobar" de ese tab (o el desplegable de estado en "Todos los miembros") lo revierte bien.
-4. Si algo de lo anterior falla, revisar primero Network/consola antes de tocar RLS — el patrón de esta sesión fue que casi todos los bugs eran de capa visual (CSS) o de datos faltantes (migración no corrida), no de permisos.
+1. **Correr `fix_0007_dni_faltante.sql` y `assets/sql/migrations/0014_pais_usuarios.sql` en Supabase** (0007 ya enviado antes; 0014 es nueva) — agregan `usuarios.dni` y `usuarios.pais`, ambas columnas que faltan en producción. Sin esto, los pasos Identidad y Territorio del wizard no pueden guardar.
+2. Repetir la prueba completa del wizard clickeando los 5 pasos en orden en la interfaz (no por consola) una vez corridas ambas migraciones, para confirmar el flujo de UI de punta a punta tal como lo verá un miembro real — incluyendo el cambio de País y el fallback a texto libre.
+3. **Aprobación del Reglamento de Puntajes por la Directiva Nacional** — confirmar/ajustar los valores de `especificaciones-sistema-comisiones.md` sección 12.3, completar acta/hash/fechas desde Configuración → Puntaje: Resultados y Vigencia, y pasar la versión de BORRADOR a VIGENTE. Es el único paso que falta para que el sistema empiece a acreditar puntos reales — todo el motor ya está construido y probado.
+4. Una vez VIGENTE, probar en vivo que un crédito real se genera (perfil, asistencia y resultado) y que el saldo/ranking lo reflejan correctamente — hasta ahora solo se probó que el candado de BORRADOR funciona, no el camino positivo con crédito real.
+5. Considerar construir la pantalla de administración para `fn_revertir_credito` (hoy solo vía SQL) si empiezan a aparecer casos reales de corrección de créditos.

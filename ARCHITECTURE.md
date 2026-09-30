@@ -103,6 +103,7 @@ register.html (auth.signUp)
 | 2 | El campo "Comando operativo" del formulario global de Nueva Tarea es texto libre (ver `modal-openers.js`, `openNuevaTareaModalGlobal`) porque requiere un selector dependiente dinámico (Comisión → Comando). | Vista Tareas (global) | Implementar `<select>` encadenado una vez validado el flujo con la directiva. |
 | 3 | Reasignar Líder de Comisión o marcar a alguien como Dirección General todavía se hace por SQL directo (ver `SETUP.md` paso 5). | Módulo Configuración | Agregar un `<select>` en Configuración una vez que haya un flujo claro de "quién puede reasignar a quién". |
 | 4 | Notificaciones reales (push / WhatsApp) — hoy solo existe el toggle de UI en Mi Perfil, sin backend detrás. | Perfil / Configuración | Ver roadmap en `especificaciones-sistema-comisiones.md` sección 9.2. |
+| 5 | Revertir un crédito de puntaje otorgado por error (`fn_revertir_credito`) no tiene pantalla — se ejecuta manualmente vía SQL. | Sistema de Puntaje | Agregar una vista de administración en Configuración cuando haya casos reales que lo requieran. |
 
 ## 5. Escalabilidad
 
@@ -110,7 +111,37 @@ register.html (auth.signUp)
 - Los 27 comandos regionales ya están indexados por `comision_id` (`idx_membresias_comando`, etc.) — las consultas de lectura no deberían degradarse notablemente incluso si cada comando llega a tener decenas de tareas.
 - Supabase Realtime no está conectado todavía (el sistema recarga datos al navegar, no en vivo). Es la próxima pieza natural para que el tablero kanban y el calendario se actualicen solos — no requiere cambios de esquema, solo agregar `.channel()` en `data/*.js`.
 
-## 6. Roadmap hacia "app móvil" (APK)
+## 6. Motor de acreditación de puntaje (nuevo — migraciones 0012/0013)
+
+A diferencia del resto del sistema, aquí la capa de datos (`data/puntaje.js`, `data/asistencia.js`, `data/resultados.js`) **nunca calcula puntos** — solo hace INSERT/UPDATE de intención ("esta lista quedó validada", "esta sección de perfil se llenó"). Toda la aritmética vive en Postgres, en 3 funciones `SECURITY DEFINER` disparadas por trigger:
+
+```
+UPDATE usuarios (cambia región/DNI/etc.)
+   └─▶ trigger fn_acreditar_perfil() → evalúa las 6 condiciones PROFILE_*
+UPDATE attendance_lists SET validated_at=... (transición null → valor)
+   └─▶ trigger fn_acreditar_asistencia() → exige audited_pct=100, recorre attendance_entries
+UPDATE result_deliveries SET status='VALIDADO' (transición → VALIDADO)
+   └─▶ trigger fn_acreditar_resultado() → monto = asistencia del evento × multiplicador, con techo
+```
+
+Las 3 funciones llaman a un único punto de entrada, `fn_acreditar(usuario, regla, version, ...)`, que:
+1. Sale sin hacer nada si `fn_version_vigente_id()` devuelve NULL — mientras el reglamento esté en BORRADOR, los triggers corren pero no generan crédito real (ver especificaciones, sección 12.4).
+2. Inserta en `credit_events` con `idempotency_key` única (`ON CONFLICT DO NOTHING`) — así reintentar la misma acción (ej. revalidar por error) nunca duplica puntos.
+3. Si el insert fue nuevo, agrega el `ledger_movements` correspondiente y actualiza `member_score_balances` — el saldo **nunca se edita directo**, siempre se recalcula sumando el libro mayor.
+
+**Detalle de diseño importante:** `credit_events.idempotency_key` es única a nivel de TODA la tabla, no por regla — por eso cada trigger arma su llave con un marcador de origen (`'|ATTENDANCE|'`, `'|RESULTS|'`, `'|PROFILE_X|'`) además del `usuario_id`/`evento_id`/`version_id`. Sin ese marcador, alguien que asiste Y entrega resultado del mismo evento perdería uno de los dos créditos por colisión de llave — se detectó y corrigió antes de esta entrega.
+
+`eventos.nivel_organizador` es una columna **generada** (`GENERATED ALWAYS AS ... STORED`): se deriva sola de si el evento tiene `comando_id` (subcomisión), solo `comision_id` (comisión) o ninguno (nacional) — nadie la escribe a mano, ni el cliente ni un trigger.
+
+## 6bis. Inscripción pública a eventos — link + QR (migración 0015, 2026-09-30)
+
+Cada evento puede activar un **link único + QR** (`eventos.codigo_publico`, generado con `crypto.randomUUID()` recortado a 10 caracteres) que lleva a `inscripcion.html?e=<codigo>`. Esta página sigue el mismo patrón de "no hay páginas 100% anónimas" que `index.html`: exige sesión (cualquier cuenta autenticada, **incluidas las `pendiente`** — ver `rls-policies.sql`, rama pública de `eventos_select`), y si no hay sesión redirige a `login.html?next=inscripcion.html?e=...` (y de ahí, si hace falta, a `register.html`, que también propaga `next`) para volver exactamente al evento tras loguearse/registrarse.
+
+Tabla nueva `event_inscripciones` (autoservicio: cada usuario inserta/actualiza SU PROPIA fila, `unique(evento_id, usuario_id)`, `estado` en `confirmado`/`cancelado`). **Importante:** esto es deliberadamente independiente del motor de puntaje de la sección 6 — inscribirse acá NO acredita nada por sí solo. El organizador (Dirección / Líder de la comisión / Coordinador del comando, mismo criterio que `canManageEnlaceOEvento`) revisa los confirmados desde el nuevo módulo **Eventos** (`views/eventos.js`, sidebar propio) y, si quiere, los "carga" con un botón explícito a la lista real de Asistencia (`attendance_lists`/`attendance_entries`, sección 6) reutilizando `crearLista`/`agregarAsistentes` — desde ahí sigue el flujo normal de auditoría/validación que sí dispara `fn_acreditar_asistencia`.
+
+**ADR — generación del QR (2026-09-30, ajustado tras probarlo en vivo):** el QR se genera 100% en el cliente, sin backend ni API de pago — igual criterio que otros sistemas propios del usuario. Se probó primero con el paquete npm `qrcode` cargado como `<script src>` fijo en `app.html` apuntando a `cdn.jsdelivr.net`; en la práctica esa request puede fallar (bloqueadores de anuncios, extensiones, redes restringidas) y al ser un `<script>` cargado siempre al inicio, si fallaba no había forma de reintentar sin recargar toda la página. Se cambió a `assets/js/qr.js`: librería `qrcodejs` (davidshimjs) servida por `cdnjs.cloudflare.com`, cargada **dinámicamente** (`renderizarQR` la inyecta la primera vez que hace falta, no antes) y memoizada para no pedirla dos veces. `descargarQR` no exporta el canvas de la librería tal cual — lo redibuja sobre un canvas nuevo con fondo blanco sólido y margen de "zona tranquila" alrededor, para que el PNG descargado siempre sea escaneable. No se guarda ninguna imagen en la base de datos: desactivar/reactivar la inscripción pública conserva `codigo_publico`, así que el link/QR ya compartido/impreso sigue funcionando igual.
+
+## 7. Roadmap hacia "app móvil" (APK)
 
 Por pedido explícito: **no se desarrolla todavía**. Lo que sí se dejó listo para no tener que rehacer nada cuando se aborde esa etapa:
 - El sitio ya es una PWA instalable (`site.webmanifest` + diseño responsive), que cubre buena parte de la necesidad de "app en el celular" sin pasar por una tienda.

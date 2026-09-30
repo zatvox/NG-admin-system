@@ -74,7 +74,12 @@
     { route: "reportes",        label: "Reportes",        roles: ["direccion"] },
     { route: "usuarios",        label: "Usuarios",        roles: ["direccion"] },
     { route: "configuracion",   label: "Configuración",   roles: ["direccion"] }, // módulo nuevo, solo Dirección
-    { route: "perfil",          label: "Mi perfil",       roles: ["direccion","lider","coordinador","miembro","colaborador"] }
+    { route: "perfil",          label: "Mi perfil",       roles: ["direccion","lider","coordinador","miembro","colaborador"] },
+    { route: "asistencia",      label: "Asistencia",      roles: ["direccion","lider","coordinador"] }, // (2026-08-22) Sistema de puntaje: gestión de listas de asistencia por evento.
+    { route: "eventos",         label: "Eventos",         roles: ["direccion","lider","coordinador"] }, // (2026-09-30) Inscripción pública a eventos: link + QR, resumen de inscritos.
+    { route: "resultados",      label: "Entrega de resultados", roles: ["direccion","lider","coordinador","miembro","colaborador"] }, // cualquiera sube su propia entrega; validar/rechazar queda filtrado dentro de la vista.
+    { route: "puntuacion",      label: "Mi puntuación",   roles: ["direccion","lider","coordinador","miembro","colaborador"] },
+    { route: "ranking",         label: "Ranking",         roles: ["direccion","lider","coordinador","miembro","colaborador"] }
   ];
 
   function canAccess(route, persona) {

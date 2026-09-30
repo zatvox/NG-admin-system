@@ -33,6 +33,34 @@
     return opts;
   }
 
+  // (2026-08-22) Etapa 8 — motor de puntaje: tipo de actividad clasifica el
+  // evento para ATTENDANCE_VALIDATED/RESULTS_DELIVERED. "No acreditable" es
+  // el default: sigue siendo un evento de calendario normal, sin puntaje.
+  var TIPO_ACTIVIDAD_OPTIONS = [
+    { value: "", label: "— No acreditable (evento normal de calendario) —" },
+    { value: "territorial", label: "Actividad territorial" },
+    { value: "virtual", label: "Reunión virtual" },
+    { value: "presencial", label: "Reunión presencial" },
+    { value: "hibrida", label: "Reunión híbrida" },
+    { value: "capacitacion", label: "Capacitación" },
+    { value: "asamblea", label: "Asamblea" }
+  ];
+
+  // Lista plana de comandos de TODAS las comisiones visibles, con el
+  // nombre de su comisión en la etiqueta — el modal genérico no soporta
+  // selects dependientes, así que data/eventos.js valida del lado
+  // cliente que el comando elegido pertenezca a la comisión elegida
+  // (ver payloadComun en data/eventos.js).
+  function comandoSelectOptions(comisiones) {
+    var opts = [{ value: "", label: "— Ninguno (evento a nivel de toda la comisión) —" }];
+    comisiones.forEach(function (c) {
+      (c.subgrupos || []).forEach(function (s) {
+        opts.push({ value: s.id + "|" + c.id, label: c.nombre + " · " + s.nombre });
+      });
+    });
+    return opts;
+  }
+
   var ESTADO_OPTIONS = [
     { value: "pendiente", label: "Pendiente" },
     { value: "en_curso", label: "En curso" },
@@ -223,16 +251,35 @@
     });
   };
 
+  // (2026-09-30) Flyer para la página pública de inscripción (opcional) —
+  // se elige entre flyers YA PUBLICADOS en el módulo Flyers, nunca se sube
+  // uno nuevo desde acá (evita duplicar lógica de subida a Storage y sus
+  // permisos, ver data/flyers.js). Solo los activos: uno inactivo no se
+  // vería igual en inscripcion.html (flyers_select en rls-policies.sql).
+  function flyerSelectOptions(flyers) {
+    var opts = [{ value: "", label: "Sin flyer" }];
+    (flyers || []).filter(function (f) { return f.activo; }).forEach(function (f) {
+      opts.push({ value: f.id, label: f.titulo });
+    });
+    return opts;
+  }
+
   global.NG_openNuevoEventoModal = function (persona, comisiones) {
-    global.NG_MODAL.openForm({
-      title: "Nuevo evento",
-      entityLabel: "Evento",
-      fields: [
-        { name: "titulo", label: "Título del evento", type: "text", required: true, placeholder: "Ej. Reunión de coordinación" },
-        { name: "fecha", label: "Fecha", type: "date", required: true, value: isoDate(TODAY()) },
-        { name: "alcance", label: "Alcance", type: "select", options: scopeSelectOptions(persona, comisiones) }
-      ],
-      onSave: function (v) { return global.NG_DATA.eventos.crear(v); }
+    var flyersP = global.NG_DATA.flyers ? global.NG_DATA.flyers.listar().catch(function () { return []; }) : Promise.resolve([]);
+    flyersP.then(function (flyers) {
+      global.NG_MODAL.openForm({
+        title: "Nuevo evento",
+        entityLabel: "Evento",
+        fields: [
+          { name: "titulo", label: "Título del evento", type: "text", required: true, placeholder: "Ej. Reunión de coordinación" },
+          { name: "fecha", label: "Fecha", type: "date", required: true, value: isoDate(TODAY()) },
+          { name: "alcance", label: "Alcance", type: "select", options: scopeSelectOptions(persona, comisiones) },
+          { name: "comando", label: "Comando (opcional)", type: "select", options: comandoSelectOptions(comisiones), hint: "Solo si es un evento de un comando/subcomisión puntual, no de toda la comisión." },
+          { name: "tipoActividad", label: "Tipo de actividad (para el Reglamento de Puntajes)", type: "select", options: TIPO_ACTIVIDAD_OPTIONS },
+          { name: "flyerId", label: "Flyer para inscripción pública", type: "select", options: flyerSelectOptions(flyers), hint: "Se muestra en la página pública si activas la inscripción desde el módulo Eventos. Publica uno primero en el módulo Flyers si no aparece ninguno." }
+        ],
+        onSave: function (v) { return global.NG_DATA.eventos.crear(v); }
+      });
     });
   };
 
@@ -242,15 +289,21 @@
   // ya viene resuelto por el mapeo de cada data/*.js, así que scopeSelectOptions
   // funciona igual que en el modal de creación.
   global.NG_openEditarEventoModal = function (item, persona, comisiones) {
-    global.NG_MODAL.openForm({
-      title: "Editar evento",
-      entityLabel: "Evento",
-      fields: [
-        { name: "titulo", label: "Título del evento", type: "text", required: true, value: item.titulo },
-        { name: "fecha", label: "Fecha", type: "date", required: true, value: item.fecha },
-        { name: "alcance", label: "Alcance", type: "select", options: scopeSelectOptions(persona, comisiones), value: item.comisionId || "" }
-      ],
-      onSave: function (v) { return global.NG_DATA.eventos.actualizar(item.id, v); }
+    var flyersP = global.NG_DATA.flyers ? global.NG_DATA.flyers.listar().catch(function () { return []; }) : Promise.resolve([]);
+    flyersP.then(function (flyers) {
+      global.NG_MODAL.openForm({
+        title: "Editar evento",
+        entityLabel: "Evento",
+        fields: [
+          { name: "titulo", label: "Título del evento", type: "text", required: true, value: item.titulo },
+          { name: "fecha", label: "Fecha", type: "date", required: true, value: item.fecha },
+          { name: "alcance", label: "Alcance", type: "select", options: scopeSelectOptions(persona, comisiones), value: item.comisionId || "" },
+          { name: "comando", label: "Comando (opcional)", type: "select", options: comandoSelectOptions(comisiones), value: item.comandoId ? (item.comandoId + "|" + item.comisionId) : "", hint: "Solo si es un evento de un comando/subcomisión puntual, no de toda la comisión." },
+          { name: "tipoActividad", label: "Tipo de actividad (para el Reglamento de Puntajes)", type: "select", options: TIPO_ACTIVIDAD_OPTIONS, value: item.tipoActividad || "" },
+          { name: "flyerId", label: "Flyer para inscripción pública", type: "select", options: flyerSelectOptions(flyers), value: item.flyerId || "", hint: "Se muestra en la página pública si activas la inscripción desde el módulo Eventos." }
+        ],
+        onSave: function (v) { return global.NG_DATA.eventos.actualizar(item.id, v); }
+      });
     });
   };
 

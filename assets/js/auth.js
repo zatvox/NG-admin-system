@@ -86,7 +86,17 @@
       throw errSusp;
     }
 
-    var base = { id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono, estado: usuario.estado };
+    // (2026-09-07) Etapa 3 del sistema de puntaje: se agregan los campos del
+    // wizard "Completar mi perfil" (migración 0013) para que `persona` sea
+    // la única fuente de verdad de qué tiene lleno cada quien — así Mi
+    // Puntuación y el propio wizard no necesitan otra consulta aparte.
+    var base = {
+      id: usuario.id, nombre: usuario.nombre, email: usuario.email, telefono: usuario.telefono,
+      dni: usuario.dni, estado: usuario.estado,
+      pais: usuario.pais, region: usuario.region, provincia: usuario.provincia, distrito: usuario.distrito,
+      formacionAcademica: usuario.formacion_academica, ocupacion: usuario.ocupacion,
+      acercaDeMi: usuario.acerca_de_mi, interesesCivicos: usuario.intereses_civicos || []
+    };
 
     if (usuario.es_direccion) {
       return Object.assign({}, base, { rol: "direccion", comisionId: null, subgrupoId: null, membresias: [], comisionesLideradas: [] });

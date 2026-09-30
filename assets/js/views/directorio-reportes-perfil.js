@@ -305,6 +305,34 @@
       el("div", {}, [el("h1", { style: "margin:0;font-size:19px;" }, [p.nombre]), el("div", { style: "color:var(--text-soft);font-size:13px;margin-top:2px;" }, [ROL_LABEL[p.rol] + (c ? " · " + c.nombre : "")])])
     ]));
 
+    // (2026-09-07) Etapa 3 del sistema de puntaje: resumen rápido + CTA al
+    // wizard, para que "Mi perfil" no sea el único lugar donde alguien se
+    // entera de que le faltan datos por completar.
+    if (!global.NG_AUTH.isDemo && global.NG_DATA.puntaje) {
+      try {
+        var balancePerfil = await global.NG_DATA.puntaje.obtenerMiBalance();
+        var camposPerfil = [p.dni, p.region, p.provincia, p.distrito, p.telefono, p.formacionAcademica, p.ocupacion, p.acercaDeMi];
+        var completos = camposPerfil.filter(function (v) { return v && String(v).trim(); }).length;
+        var puntajeCard = el("div", { class: "card", style: "margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;" }, [
+          el("div", {}, [
+            el("div", { style: "font-size:12px;color:var(--text-soft);" }, ["Mi puntuación"]),
+            el("div", { style: "font-size:20px;font-weight:700;color:var(--ink);" }, [String(balancePerfil.balance) + " pts"]),
+            el("div", { style: "font-size:12px;color:var(--text-faint);margin-top:2px;" }, [completos < camposPerfil.length ? "Perfil " + completos + "/" + camposPerfil.length + " secciones completas" : "Perfil completo"])
+          ])
+        ]);
+        if (completos < camposPerfil.length) {
+          var ctaPerfil = el("button", { class: "btn btn-accent", type: "button" }, ["Completar mi perfil"]);
+          ctaPerfil.addEventListener("click", function () { location.hash = "#/completar-perfil"; });
+          puntajeCard.appendChild(ctaPerfil);
+        } else {
+          var verBtn = el("button", { class: "btn btn-ghost", type: "button" }, ["Ver mi puntuación"]);
+          verBtn.addEventListener("click", function () { location.hash = "#/puntuacion"; });
+          puntajeCard.appendChild(verBtn);
+        }
+        root.appendChild(puntajeCard);
+      } catch (e) { /* si falla (ej. tablas de puntaje no corridas todavía), no bloquea el resto de "Mi perfil" */ }
+    }
+
     root.appendChild(el("div", { class: "section-title" }, ["Pertenencias"]));
     var card = el("div", { class: "card" });
     // (2026-07-30) Antes solo mostraba UN comando (p.subgrupoId) — ahora

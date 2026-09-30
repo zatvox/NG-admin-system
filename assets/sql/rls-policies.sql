@@ -139,6 +139,18 @@ alter table foro_temas       enable row level security;
 alter table foro_comentarios enable row level security;
 alter table foro_votos       enable row level security;
 alter table flyers           enable row level security;
+alter table scoring_rule_versions enable row level security;
+alter table scoring_rules         enable row level security;
+alter table rule_fixed_value      enable row level security;
+alter table rule_value_matrix     enable row level security;
+alter table rule_multiplier_value enable row level security;
+alter table attendance_lists      enable row level security;
+alter table attendance_entries    enable row level security;
+alter table result_deliveries     enable row level security;
+alter table credit_events         enable row level security;
+alter table ledger_movements      enable row level security;
+alter table member_score_balances enable row level security;
+alter table event_inscripciones   enable row level security;
 
 -- ---------------------------------------------------------------------
 -- QUITAR POLÍTICAS ANTERIORES (hace que este archivo se pueda volver a
@@ -168,6 +180,10 @@ drop policy if exists eventos_select          on eventos;
 drop policy if exists eventos_insert          on eventos;
 drop policy if exists eventos_update          on eventos;
 drop policy if exists eventos_delete          on eventos;
+drop policy if exists event_inscripciones_select on event_inscripciones;
+drop policy if exists event_inscripciones_insert on event_inscripciones;
+drop policy if exists event_inscripciones_update on event_inscripciones;
+drop policy if exists event_inscripciones_delete on event_inscripciones;
 drop policy if exists comunicados_select      on comunicados;
 drop policy if exists comunicados_insert      on comunicados;
 drop policy if exists comunicados_update      on comunicados;
@@ -194,6 +210,26 @@ drop policy if exists foro_comentarios_delete on foro_comentarios;
 drop policy if exists foro_votos_select       on foro_votos;
 drop policy if exists foro_votos_insert       on foro_votos;
 drop policy if exists foro_votos_delete       on foro_votos;
+drop policy if exists scoring_rule_versions_select on scoring_rule_versions;
+drop policy if exists scoring_rule_versions_write  on scoring_rule_versions;
+drop policy if exists scoring_rules_select         on scoring_rules;
+drop policy if exists scoring_rules_write          on scoring_rules;
+drop policy if exists rule_fixed_value_select      on rule_fixed_value;
+drop policy if exists rule_fixed_value_write       on rule_fixed_value;
+drop policy if exists rule_value_matrix_select     on rule_value_matrix;
+drop policy if exists rule_value_matrix_write      on rule_value_matrix;
+drop policy if exists rule_multiplier_value_select on rule_multiplier_value;
+drop policy if exists rule_multiplier_value_write  on rule_multiplier_value;
+drop policy if exists attendance_lists_select   on attendance_lists;
+drop policy if exists attendance_lists_write    on attendance_lists;
+drop policy if exists attendance_entries_select on attendance_entries;
+drop policy if exists attendance_entries_write  on attendance_entries;
+drop policy if exists result_deliveries_select  on result_deliveries;
+drop policy if exists result_deliveries_insert  on result_deliveries;
+drop policy if exists result_deliveries_update  on result_deliveries;
+drop policy if exists credit_events_select      on credit_events;
+drop policy if exists ledger_movements_select   on ledger_movements;
+drop policy if exists member_score_balances_select on member_score_balances;
 
 -- ---------------------------------------------------------------------
 -- USUARIOS
@@ -442,8 +478,18 @@ create policy tarea_asignados_write on tarea_asignados for all using (
 -- (2026-07-31) "general" queda visible para cualquier autenticado (incluida
 -- gente pendiente de aprobar — son las "noticias" que se muestran en la
 -- landing pública). Lo de una comisión puntual sí exige estar aprobado.
+-- (2026-09-30) Migración 0015: se agrega la rama "inscripcion_publica" —
+-- un evento con el link/QR de inscripción activo tiene que poder verse
+-- desde inscripcion.html por CUALQUIER cuenta autenticada, incluida una
+-- "pendiente" recién creada (no solo alcance='general' ni solo activos),
+-- porque el objetivo explícito de esta función es también captar gente
+-- nueva. No expone nada de otros eventos: sigue exigiendo sesión y solo
+-- abre esta rama para el evento puntual que activó el link.
 create policy eventos_select on eventos for select using (
-  auth.uid() is not null and (alcance = 'general' or fn_esta_activo(auth.uid()))
+  auth.uid() is not null and (
+    alcance = 'general' or fn_esta_activo(auth.uid())
+    or (inscripcion_publica and codigo_publico is not null and not cancelado)
+  )
 );
 
 -- (2026-07-30) La rama "comision_id is null and fn_es_lider_de_alguna(...)"
@@ -606,6 +652,190 @@ create policy configuracion_write on configuracion for all using (
   fn_es_direccion(auth.uid())
 ) with check (
   fn_es_direccion(auth.uid())
+);
+
+-- ---------------------------------------------------------------------
+-- SISTEMA DE PUNTAJE — catálogo de reglas (scoring_rule_versions,
+-- scoring_rules, rule_fixed_value, rule_value_matrix,
+-- rule_multiplier_value). Ver: cualquier autenticado (transparencia del
+-- reglamento — cualquier miembro puede consultar cuánto vale cada
+-- acción, igual criterio que "configuracion"). Editar: exclusivo de
+-- Dirección, es la única autoridad que puede aprobar/ajustar el
+-- reglamento (sección 2 y 16 del reglamento de puntajes).
+-- ---------------------------------------------------------------------
+create policy scoring_rule_versions_select on scoring_rule_versions for select using (
+  auth.uid() is not null
+);
+create policy scoring_rule_versions_write on scoring_rule_versions for all using (
+  fn_es_direccion(auth.uid())
+) with check (
+  fn_es_direccion(auth.uid())
+);
+
+create policy scoring_rules_select on scoring_rules for select using (
+  auth.uid() is not null
+);
+create policy scoring_rules_write on scoring_rules for all using (
+  fn_es_direccion(auth.uid())
+) with check (
+  fn_es_direccion(auth.uid())
+);
+
+create policy rule_fixed_value_select on rule_fixed_value for select using (
+  auth.uid() is not null
+);
+create policy rule_fixed_value_write on rule_fixed_value for all using (
+  fn_es_direccion(auth.uid())
+) with check (
+  fn_es_direccion(auth.uid())
+);
+
+create policy rule_value_matrix_select on rule_value_matrix for select using (
+  auth.uid() is not null
+);
+create policy rule_value_matrix_write on rule_value_matrix for all using (
+  fn_es_direccion(auth.uid())
+) with check (
+  fn_es_direccion(auth.uid())
+);
+
+create policy rule_multiplier_value_select on rule_multiplier_value for select using (
+  auth.uid() is not null
+);
+create policy rule_multiplier_value_write on rule_multiplier_value for all using (
+  fn_es_direccion(auth.uid())
+) with check (
+  fn_es_direccion(auth.uid())
+);
+
+-- ---------------------------------------------------------------------
+-- MOTOR DE ACREDITACIÓN (migración 0013): asistencia, entrega de
+-- resultados, y el libro mayor (credit_events/ledger_movements/
+-- member_score_balances). "Organizador del evento" = Dirección, el
+-- Líder de la comisión que lo organiza, o el Coordinador del comando
+-- (si es a nivel subcomisión) — mismo criterio ya usado en eventos_*.
+-- ---------------------------------------------------------------------
+create policy attendance_lists_select on attendance_lists for select using (
+  fn_esta_activo(auth.uid())
+);
+create policy attendance_lists_write on attendance_lists for all using (
+  fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from eventos ev where ev.id = attendance_lists.evento_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+) with check (
+  fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from eventos ev where ev.id = attendance_lists.evento_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+);
+
+create policy attendance_entries_select on attendance_entries for select using (
+  fn_esta_activo(auth.uid())
+);
+create policy attendance_entries_write on attendance_entries for all using (
+  fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from attendance_lists al join eventos ev on ev.id = al.evento_id
+    where al.list_id = attendance_entries.list_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+) with check (
+  fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from attendance_lists al join eventos ev on ev.id = al.evento_id
+    where al.list_id = attendance_entries.list_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+);
+
+-- ---------------------------------------------------------------------
+-- EVENT_INSCRIPCIONES (migración 0015) — autoservicio desde el link/QR
+-- público. Distinto de attendance_entries: acá cualquier cuenta
+-- autenticada (incluida "pendiente") inserta SU PROPIA fila; ver todas
+-- las de un evento es del organizador o Dirección, igual criterio que
+-- attendance_lists_write. No requiere fn_esta_activo a propósito — el
+-- objetivo es también captar gente que recién se registra.
+-- ---------------------------------------------------------------------
+create policy event_inscripciones_select on event_inscripciones for select using (
+  usuario_id = auth.uid()
+  or fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from eventos ev where ev.id = event_inscripciones.evento_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+);
+
+create policy event_inscripciones_insert on event_inscripciones for insert with check (
+  usuario_id = auth.uid()
+  and exists (
+    select 1 from eventos ev where ev.id = event_inscripciones.evento_id
+      and ev.inscripcion_publica and not ev.cancelado
+  )
+);
+
+-- Solo para que uno mismo pueda "cancelar" su inscripción (estado ->
+-- 'cancelado'), nunca para tocar la fila de otra persona.
+create policy event_inscripciones_update on event_inscripciones for update using (
+  usuario_id = auth.uid()
+) with check (
+  usuario_id = auth.uid()
+);
+
+create policy event_inscripciones_delete on event_inscripciones for delete using (
+  fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from eventos ev where ev.id = event_inscripciones.evento_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+);
+
+-- Entrega de resultados: cualquier activo sube LA SUYA; ver/validar es de
+-- Dirección, el organizador del evento, o el propio responsable (para
+-- que pueda ver el estado de lo que entregó).
+create policy result_deliveries_select on result_deliveries for select using (
+  usuario_id = auth.uid()
+  or fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from eventos ev where ev.id = result_deliveries.evento_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+);
+create policy result_deliveries_insert on result_deliveries for insert with check (
+  usuario_id = auth.uid() and fn_esta_activo(auth.uid())
+);
+create policy result_deliveries_update on result_deliveries for update using (
+  fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from eventos ev where ev.id = result_deliveries.evento_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+) with check (
+  fn_es_direccion(auth.uid())
+  or exists (
+    select 1 from eventos ev where ev.id = result_deliveries.evento_id
+      and (fn_es_lider(auth.uid(), ev.comision_id) or (ev.comando_id is not null and fn_es_coordinador(auth.uid(), ev.comando_id)))
+  )
+);
+
+-- Libro mayor: solo lectura desde el cliente (los INSERT los hacen los
+-- triggers, vía SECURITY DEFINER, que no pasan por RLS). Cada quien ve
+-- SU propio historial; Dirección ve el de todos (para auditar/revertir).
+create policy credit_events_select on credit_events for select using (
+  usuario_id = auth.uid() or fn_es_direccion(auth.uid())
+);
+create policy ledger_movements_select on ledger_movements for select using (
+  usuario_id = auth.uid() or fn_es_direccion(auth.uid())
+);
+-- Saldo: cada quien ve el suyo; para el Ranking (que muestra a todos, con
+-- identidad enmascarada salvo la fila propia) cualquier activo puede leer
+-- todos los saldos — el enmascarado de "quién es quién" lo hace el
+-- cliente al pintar la tabla, igual que el resto de la UI de este
+-- proyecto (ningún dato de contacto/DNI viaja en esa consulta).
+create policy member_score_balances_select on member_score_balances for select using (
+  fn_esta_activo(auth.uid())
 );
 
 -- ---------------------------------------------------------------------

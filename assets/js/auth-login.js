@@ -9,6 +9,13 @@
   var q = window.NG_DOM.q;
 
   document.addEventListener("DOMContentLoaded", function () {
+    // (2026-09-30) Si llegó acá desde inscripcion.html (sin sesión) o
+    // desde register.html tras crear cuenta, ?next= trae a dónde volver
+    // en vez del destino por defecto (app.html) — ver NG_UTILS.leerNextSeguro
+    // (solo acepta un .html local, nunca una URL externa).
+    var next = window.NG_UTILS.leerNextSeguro();
+    var destino = next || "app.html";
+
     // (2026-08-15) Si app.html (o index.html) mandó a alguien de vuelta
     // acá por un error de sesión (ej. "cuenta suspendida"), el mensaje
     // viaja en sessionStorage — se muestra una sola vez y se borra.
@@ -37,7 +44,7 @@
 
       q("#demo-login-btn").addEventListener("click", function () {
         window.NG_AUTH.login(demoSelect.value)
-          .then(function () { window.location.href = "app.html"; })
+          .then(function () { window.location.href = destino; })
           .catch(function (err) { window.alert(window.NG_ERR.format(err)); });
       });
     } else {
@@ -55,7 +62,7 @@
         btn.disabled = true; btn.textContent = "Ingresando…";
 
         window.NG_AUTH.login(email, password)
-          .then(function () { window.location.href = "app.html"; })
+          .then(function () { window.location.href = destino; })
           .catch(function (err) {
             btn.disabled = false; btn.textContent = "Ingresar →";
             errorBox.textContent = window.NG_ERR.format(err);
@@ -68,7 +75,7 @@
     // cuenta existe en Auth pero su perfil en `usuarios` tiene un problema),
     // se avisa en vez de dejar la pantalla en blanco sin explicación.
     window.NG_AUTH.getSession()
-      .then(function (persona) { if (persona) window.location.href = "app.html"; })
+      .then(function (persona) { if (persona) window.location.href = destino; })
       .catch(function (err) {
         var errorBox = q("#login-error");
         if (errorBox) { errorBox.textContent = window.NG_ERR.format(err); errorBox.style.display = "block"; }

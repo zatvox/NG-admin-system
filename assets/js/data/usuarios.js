@@ -21,6 +21,32 @@
     if (error) throw error;
   }
 
+  // (2026-09-07) Etapa 3 del sistema de puntaje — wizard "Completar mi
+  // perfil". Guarda solo las columnas que le pasen (cada paso del wizard
+  // llama esto con SU sección nada más, así nadie pierde lo ya guardado
+  // en otro paso si cierra a mitad de camino). Cada UPDATE dispara el
+  // trigger fn_acreditar_perfil en la base — este archivo solo mueve
+  // datos, la acreditación vive 100% en Postgres.
+  async function actualizarPerfilExtendido(payload) {
+    if (!db) { global.NG_TOAST && global.NG_TOAST.show("Esto requiere Supabase conectado.", "info"); return null; }
+    var { data: userData, error: eUser } = await db.auth.getUser();
+    if (eUser) throw eUser;
+    var cambios = {};
+    ["dni", "region", "provincia", "distrito"].forEach(function (k) {
+      if (payload[k] !== undefined) cambios[k] = payload[k] || null;
+    });
+    // pais es NOT NULL en la base (default 'Perú') — nunca se manda vacío.
+    if (payload.pais) cambios.pais = payload.pais;
+    if (payload.telefono !== undefined) cambios.telefono = payload.telefono || null;
+    if (payload.formacionAcademica !== undefined) cambios.formacion_academica = payload.formacionAcademica || null;
+    if (payload.ocupacion !== undefined) cambios.ocupacion = payload.ocupacion || null;
+    if (payload.acercaDeMi !== undefined) cambios.acerca_de_mi = payload.acercaDeMi || null;
+    if (payload.interesesCivicos !== undefined) cambios.intereses_civicos = payload.interesesCivicos.length ? payload.interesesCivicos : null;
+    if (!Object.keys(cambios).length) return;
+    var { error } = await db.from("usuarios").update(cambios).eq("id", userData.user.id);
+    if (error) throw error;
+  }
+
   async function listarTodos() {
     if (!db) return [];
     var { data, error } = await db.from("usuarios").select("*").order("nombre");
@@ -59,6 +85,7 @@
   global.NG_DATA = global.NG_DATA || {};
   global.NG_DATA.usuarios = {
     actualizarPerfil: actualizarPerfil,
+    actualizarPerfilExtendido: actualizarPerfilExtendido,
     listarTodos: listarTodos,
     actualizarUsuarioAdmin: actualizarUsuarioAdmin
   };

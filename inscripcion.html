@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Inscripción a evento — Nueva Generación</title>
+<link rel="icon" href="assets/images/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/variables.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/responsive.css">
+<!--
+  inscripcion.html — página pública (pero SIEMPRE detrás de sesión, igual
+  que el resto del sistema: no hay páginas 100% anónimas por diseño, ver
+  rls-policies.sql) para confirmar asistencia desde el link/QR de un
+  evento (?e=<codigo_publico>).
+
+  Flujo, resuelto en runtime por el <script> de abajo:
+    - Sin sesión               -> redirige a login.html?next=inscripcion.html?e=<codigo>
+    - Con sesión (CUALQUIER rol, incluido "pendiente") -> se queda acá,
+      muestra el flyer/título del evento y el botón de confirmar.
+    - Código inválido / evento sin inscripción pública / cancelado
+      -> mensaje claro, sin redirigir a ningún lado.
+-->
+<style>
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg,#F4F5F9);}
+  #insc-loading{display:flex;align-items:center;justify-content:center;min-height:100vh;color:var(--text-faint);font-size:13px;}
+  #insc{display:none;max-width:520px;margin:0 auto;padding:32px 20px 60px;}
+  .insc-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
+  .insc-brand{display:flex;flex-direction:column;}
+  .insc-brand .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--accent-ink,#B45309);text-transform:uppercase;}
+  .insc-brand h1{font-family:'Space Grotesk',sans-serif;font-size:19px;margin:2px 0 0;}
+  #insc-flyer{width:100%;border-radius:14px;overflow:hidden;margin-bottom:18px;border:1px solid var(--border);background:var(--paper);}
+  #insc-flyer img{width:100%;display:block;}
+  .insc-evento-fecha{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-faint);}
+  .insc-evento-titulo{font-family:'Space Grotesk',sans-serif;font-size:22px;margin:4px 0 18px;}
+  #insc-estado{border-radius:10px;padding:14px 16px;font-size:13.5px;line-height:1.5;margin-bottom:14px;}
+  #insc-estado.ok{background:#E4F3EA;color:var(--ok);}
+  #insc-estado.warn{background:#FCF1D7;color:var(--accent-ink,#8A5A00);}
+  #insc-error, #insc-notfound{display:none;text-align:center;padding:40px 20px;color:var(--text-soft);font-size:13.5px;line-height:1.6;}
+</style>
+</head>
+<body>
+
+<div id="insc-loading">Cargando…</div>
+
+<div id="insc-notfound">
+  <h2 style="font-family:'Space Grotesk',sans-serif;font-size:18px;margin-bottom:8px;">Este link ya no es válido</h2>
+  <p>El evento no existe, ya no acepta inscripciones, o fue cancelado. Si crees que es un error, contacta a quien te compartió el link.</p>
+</div>
+
+<div id="insc">
+  <div class="insc-topbar">
+    <div class="insc-brand">
+      <span class="eyebrow" id="insc-eyebrow">NUEVA GENERACIÓN</span>
+      <h1 id="insc-orgname">Sistema de Comisiones</h1>
+    </div>
+    <button class="btn btn-secondary" id="insc-logout" type="button">Cerrar sesión</button>
+  </div>
+
+  <div id="insc-flyer" style="display:none;"><img id="insc-flyer-img" src="" alt=""></div>
+
+  <div class="insc-evento-fecha" id="insc-fecha"></div>
+  <div class="insc-evento-titulo" id="insc-titulo"></div>
+
+  <div id="insc-estado" style="display:none;"></div>
+
+  <button class="btn btn-primary" id="insc-confirmar-btn" type="button" style="width:100%;">Confirmar mi asistencia</button>
+  <button class="btn btn-ghost" id="insc-cancelar-btn" type="button" style="width:100%;margin-top:10px;display:none;">Cancelar mi inscripción</button>
+
+  <div id="insc-error" class="form-error" style="display:none;background:#FBE9E7;color:var(--danger);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-top:14px;"></div>
+</div>
+
+<!-- Orden de carga: igual que index.html, más data/eventos, data/flyers y data/inscripciones -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/supabase-client.js"></script>
+<script src="assets/js/ui/dom.js"></script>
+<script src="assets/js/error-messages.js"></script>
+<script src="assets/js/ui/toast.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/data/mock-data.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/data/eventos.js"></script>
+<script src="assets/js/data/configuracion.js"></script>
+<script src="assets/js/data/flyers.js"></script>
+<script src="assets/js/data/inscripciones.js"></script>
+<script>
+(function () {
+  "use strict";
+  var q = window.NG_DOM.q;
+
+  function leerCodigo() {
+    var m = /[?&]e=([^&]+)/.exec(window.location.search);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  var codigo = leerCodigo();
+
+  function irALogin() {
+    var next = "inscripcion.html" + window.location.search;
+    window.location.replace("login.html?next=" + encodeURIComponent(next));
+  }
+
+  function mostrarNoEncontrado() {
+    q("#insc-loading").style.display = "none";
+    q("#insc-notfound").style.display = "block";
+  }
+
+  function fmtFechaHora(evento) {
+    var f = window.NG_UTILS.fmtLargeDate(new Date(evento.fecha + "T00:00:00"));
+    return f.charAt(0).toUpperCase() + f.slice(1);
+  }
+
+  async function pintar(persona) {
+    if (!codigo) { mostrarNoEncontrado(); return; }
+
+    var evento;
+    try { evento = await window.NG_DATA.eventos.obtenerPorCodigoPublico(codigo); }
+    catch (e) { mostrarNoEncontrado(); return; }
+    if (!evento) { mostrarNoEncontrado(); return; }
+
+    var cfg = {};
+    try { cfg = await window.NG_DATA.configuracion.obtener(); } catch (e) { cfg = {}; }
+    if (cfg["organizacion.nombre"]) q("#insc-orgname").textContent = cfg["organizacion.nombre"];
+    if (cfg["organizacion.eslogan"]) q("#insc-eyebrow").textContent = cfg["organizacion.eslogan"];
+
+    if (evento.flyerId) {
+      try {
+        var flyers = await window.NG_DATA.flyers.listar();
+        var flyer = flyers.filter(function (f) { return f.id === evento.flyerId; })[0];
+        if (flyer) {
+          q("#insc-flyer-img").src = flyer.imagenUrl;
+          q("#insc-flyer-img").alt = flyer.titulo;
+          q("#insc-flyer").style.display = "block";
+        }
+      } catch (e) { /* sin flyer no bloquea el resto de la página */ }
+    }
+
+    q("#insc-fecha").textContent = fmtFechaHora(evento);
+    q("#insc-titulo").textContent = evento.titulo;
+
+    var estadoBox = q("#insc-estado");
+    var confirmarBtn = q("#insc-confirmar-btn");
+    var cancelarBtn = q("#insc-cancelar-btn");
+    var errorBox = q("#insc-error");
+
+    function mostrarError(err) {
+      errorBox.textContent = window.NG_ERR.format(err);
+      errorBox.style.display = "block";
+    }
+
+    async function refrescarMiInscripcion() {
+      var mia = null;
+      try { mia = await window.NG_DATA.inscripciones.obtenerMia(evento.id); } catch (e) { /* no bloquea */ }
+      if (mia && mia.estado === "confirmado") {
+        estadoBox.className = "ok"; estadoBox.style.display = "block";
+        estadoBox.textContent = "✓ Ya confirmaste tu asistencia a este evento.";
+        confirmarBtn.style.display = "none";
+        cancelarBtn.style.display = "block";
+      } else {
+        estadoBox.style.display = "none";
+        confirmarBtn.style.display = "block";
+        cancelarBtn.style.display = "none";
+      }
+    }
+
+    confirmarBtn.addEventListener("click", function () {
+      errorBox.style.display = "none";
+      confirmarBtn.disabled = true; confirmarBtn.textContent = "Confirmando…";
+      window.NG_DATA.inscripciones.confirmar(evento.id)
+        .then(function () {
+          confirmarBtn.disabled = false; confirmarBtn.textContent = "Confirmar mi asistencia";
+          return refrescarMiInscripcion();
+        })
+        .catch(function (err) {
+          confirmarBtn.disabled = false; confirmarBtn.textContent = "Confirmar mi asistencia";
+          mostrarError(err);
+        });
+    });
+
+    cancelarBtn.addEventListener("click", function () {
+      if (!window.confirm("¿Cancelar tu inscripción a este evento?")) return;
+      errorBox.style.display = "none";
+      cancelarBtn.disabled = true;
+      window.NG_DATA.inscripciones.cancelar(evento.id)
+        .then(function () { cancelarBtn.disabled = false; return refrescarMiInscripcion(); })
+        .catch(function (err) { cancelarBtn.disabled = false; mostrarError(err); });
+    });
+
+    q("#insc-logout").addEventListener("click", function () {
+      window.NG_AUTH.logout().finally(function () { irALogin(); });
+    });
+
+    await refrescarMiInscripcion();
+
+    q("#insc-loading").style.display = "none";
+    q("#insc").style.display = "block";
+  }
+
+  window.NG_AUTH.getSession()
+    .then(function (persona) {
+      if (!persona) { irALogin(); return; }
+      pintar(persona);
+    })
+    .catch(function () { irALogin(); });
+})();
+</script>
+</body>
+</html>

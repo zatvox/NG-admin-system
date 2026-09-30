@@ -11,7 +11,7 @@
   // archivo solo hace el despacho de rutas.
   var VH = window.NG_VIEW_HELPERS;
 
-  var ROUTES_PROTEGIDAS = ["dashboard","comisiones","tareas","calendario","directorio","comunicaciones","enlaces","foro","reportes","usuarios","perfil","configuracion"];
+  var ROUTES_PROTEGIDAS = ["dashboard","comisiones","tareas","calendario","directorio","comunicaciones","enlaces","foro","reportes","usuarios","perfil","configuracion","asistencia","resultados","puntuacion","ranking","eventos"];
 
   function route() {
     var hash = location.hash.replace("#/", "");
@@ -48,6 +48,12 @@
     else if (r === "usuarios") run = V.usuarios();
     else if (r === "perfil") run = V.perfil();
     else if (r === "configuracion") run = V.configuracion();
+    else if (r === "asistencia") run = V.asistencia(parts[1]);
+    else if (r === "resultados") run = V.resultados();
+    else if (r === "puntuacion") run = V.puntuacion();
+    else if (r === "ranking") run = V.ranking();
+    else if (r === "eventos") run = V.eventos(parts[1]);
+    else if (r === "completar-perfil") run = V["completar-perfil"]();
     else { VH.setTitle("No encontrado"); q("#view-root").innerHTML = '<div class="empty-state">Esta pantalla no existe.</div>'; return; }
 
     Promise.resolve(run).catch(function (err) {

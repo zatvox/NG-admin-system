@@ -66,6 +66,10 @@ Funciona en dos modos, sin tocar código:
 
 ## Módulos incluidos
 
-Inicio · Comisiones · Tareas (kanban + lista) · Calendario · Directorio · Comunicados · Enlaces · Reportes · Configuración (nuevo, solo Dirección) · Mi perfil.
+Inicio · Comisiones · Tareas (kanban + lista) · Calendario · Directorio · Comunicados · Enlaces · Reportes · Configuración (solo Dirección) · Mi perfil · **Asistencia · Entrega de resultados · Mi puntuación · Ranking · Completar mi perfil** (nuevo — sistema de puntaje, ver `especificaciones-sistema-comisiones.md` sección 12).
 
 Ver `especificaciones-sistema-comisiones.md` sección 4 para el detalle de cada uno, y sección 3 para la tabla completa de roles y permisos.
+
+## Sistema de Puntaje (nuevo)
+
+Reconoce la participación real de cada miembro (perfil completo, asistencia validada, resultados entregados) con un motor de créditos que corre 100% en la base de datos — nunca en el navegador. Mientras el Reglamento de Puntajes esté en estado BORRADOR (configurable en Configuración → Puntaje), el sistema funciona igual pero no acredita puntos reales; en cuanto la Directiva lo marca VIGENTE, empieza a sumar automáticamente. Ver `especificaciones-sistema-comisiones.md` sección 12 para la guía completa (valores, cómo se acumulan los puntos, y qué falta para activarlo).

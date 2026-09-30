@@ -198,8 +198,27 @@
           ])
         ])
       ]);
+      var acciones = el("div", { style: "display:flex;gap:8px;align-items:center;" });
+      // (2026-08-22) Sistema de puntaje: solo quien organiza (Dirección/Líder/
+      // Coordinador) gestiona la lista de asistencia, y solo si el evento tiene
+      // tipo_actividad (si no, no acredita puntos — ver nivel_organizador/
+      // tipo_actividad en migración 0013).
+      if (persona && e.tipoActividad && !e.cancelado &&
+          (persona.rol === "direccion" || persona.rol === "lider" || persona.rol === "coordinador")) {
+        var asistBtn = el("a", { href: "#/asistencia/" + e.id, style: "font-size:12px;font-weight:600;color:var(--accent, #2563eb);text-decoration:none;" }, ["Asistencia"]);
+        acciones.appendChild(asistBtn);
+      }
+      // (2026-09-30) Migración 0015: link directo al módulo Eventos para
+      // quien ya activó la inscripción pública — mismo criterio de roles
+      // que Asistencia (organizador), sin exigir tipo_actividad (un evento
+      // puede tener inscripción pública sin ser acreditable para puntaje).
+      if (persona && e.inscripcionPublica &&
+          (persona.rol === "direccion" || persona.rol === "lider" || persona.rol === "coordinador")) {
+        var inscrBtn = el("a", { href: "#/eventos/" + e.id, style: "font-size:12px;font-weight:600;color:var(--accent, #2563eb);text-decoration:none;" }, ["Inscritos"]);
+        acciones.appendChild(inscrBtn);
+      }
       if (persona && global.NG_PERMS.canManageEnlaceOEvento(persona, e)) {
-        item.appendChild(gestionRow(
+        acciones.appendChild(gestionRow(
           function () { global.NG_openEditarEventoModal(e, persona, comisiones); },
           function () {
             if (!window.confirm('¿Eliminar el evento "' + e.titulo + '"?')) return;
@@ -209,6 +228,7 @@
           }
         ));
       }
+      if (acciones.childNodes.length) item.appendChild(acciones);
       wrap.appendChild(item);
     });
     return wrap;
